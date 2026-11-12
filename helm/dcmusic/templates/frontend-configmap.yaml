@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "dcmusic.fullname" . }}-frontend-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "dcmusic.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+data:
+  VITE_API_URL: {{ .Values.frontend.env.VITE_API_URL | quote }}

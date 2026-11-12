@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "dcmusic.fullname" . }}-backend-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "dcmusic.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+data:
+  SPRING_PROFILES_ACTIVE: {{ .Values.backend.env.SPRING_PROFILES_ACTIVE | quote }}
+  SPRING_JPA_HIBERNATE_DDL_AUTO: {{ .Values.backend.env.SPRING_JPA_HIBERNATE_DDL_AUTO | quote }}
+  APP_CORS_ALLOWED_ORIGINS: {{ .Values.backend.env.APP_CORS_ALLOWED_ORIGINS | quote }}

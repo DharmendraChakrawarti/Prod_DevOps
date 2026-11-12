@@ -1,0 +1,45 @@
+# ==============================================================
+#  ArgoCD Application — DC Music DEV Environment
+# ==============================================================
+#  This CRD tells ArgoCD to sync the Helm chart from the gitops
+#  repo into the dcmusic namespace. Automated sync is ENABLED
+#  for dev — changes are applied automatically on git push.
+# ==============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dcmusic-dev
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: dcmusic
+    app.kubernetes.io/env: dev
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/<your-org>/dcmusic-gitops.git  # TODO: Replace with your actual repo URL
+    targetRevision: main
+    path: helm/dcmusic
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-dev.yaml
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dcmusic
+
+  syncPolicy:
+    automated:
+      prune: true       # Remove resources deleted from git
+      selfHeal: true    # Re-sync if someone manually edits in-cluster
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

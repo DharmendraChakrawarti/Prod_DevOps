@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dcmusic-frontend-config
+  namespace: dcmusic
+  labels:
+    app.kubernetes.io/name: dcmusic
+    app.kubernetes.io/component: frontend
+data:
+  # Set to the backend service ClusterIP URL within the cluster,
+  # or to the ALB DNS once provisioned.
+  VITE_API_URL: "http://dcmusic-backend.dcmusic.svc.cluster.local:8080"

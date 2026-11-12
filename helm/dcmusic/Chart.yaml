@@ -1,0 +1,8 @@
+apiVersion: v2
+name: dcmusic
+description: DC Music Helm Chart — React+Vite frontend & Spring Boot backend on AWS EKS
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+maintainers:
+  - name: DC

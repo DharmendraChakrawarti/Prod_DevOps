@@ -1,0 +1,57 @@
+# =============================================================
+#  EXAMPLE VARIABLE VALUES — DC Music on AWS EKS (Free Tier optimized)
+# =============================================================
+# Copy this file to terraform.tfvars and fill in your values:
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# IMPORTANT: Never commit terraform.tfvars to source control.
+#            It contains your database password.
+#
+# COST NOTES (ap-south-1 approximate):
+#   - EKS control plane: ~$0.10/hr = ~$73/mo  (NOT free tier!)
+#   - t3.small nodes x2:  ~$0.023/hr each = ~$33/mo total
+#   - NAT Gateway:        ~$0.045/hr = ~$32/mo + data transfer
+#   - db.t3.micro RDS:    Free tier (12 months) → ~$15/mo after
+#   TOTAL ESTIMATED:      ~$138/mo for minimum EKS deployment
+# =============================================================
+
+# General
+aws_region   = "ap-south-1"
+project_name = "dcmusic"
+environment  = "dev"
+
+# -------------------------------------------------------
+# VPC Configuration
+# -------------------------------------------------------
+vpc_cidr             = "10.0.0.0/16"
+public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.10.0/24", "10.0.11.0/24"]
+availability_zones   = ["ap-south-1a", "ap-south-1b"]
+
+# -------------------------------------------------------
+# EKS Configuration
+# -------------------------------------------------------
+cluster_name       = "dcmusic-eks"
+kubernetes_version = "1.29"
+
+# Node group — t3.small is the minimum viable size for EKS workloads
+# t2.micro/t3.micro are too small (OOM for kubelet + system pods)
+node_instance_types = ["t3.small"]
+node_desired_size   = 2  # 2 nodes for HA
+node_min_size       = 1  # Scale down to 1 node to save cost when idle
+node_max_size       = 3  # Allow burst to 3 nodes
+node_disk_size      = 20 # 20 GB per node (gp2)
+
+# -------------------------------------------------------
+# RDS Configuration (db.t3.micro = Free Tier eligible)
+# -------------------------------------------------------
+db_instance_class = "db.t3.micro"
+db_name           = "dcmusic_db"
+db_username       = "admin"
+db_password       = "YourSecurePassword123!"  # !! CHANGE THIS — use a strong password
+
+# -------------------------------------------------------
+# EC2 Configuration (legacy — ec2 module is commented out)
+# -------------------------------------------------------
+# ec2_instance_type = "t3.micro"
+# ec2_key_name      = "my-key-pair"

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dcmusic
+  labels:
+    app.kubernetes.io/name: dcmusic
+    app.kubernetes.io/managed-by: kubectl

@@ -1,0 +1,209 @@
+// =============================================================
+//  JENKINSFILE.INFRA — Infrastructure Pipeline for DC Music
+// =============================================================
+//
+//  WHAT THIS PIPELINE DOES (6 stages):
+//  ------------------------------------
+//  1. Checkout         → Pulls code from GitHub
+//  2. Terraform Init   → Initializes Terraform with S3 backend
+//  3. Terraform Plan   → Creates an execution plan (saved to file)
+//  4. Manual Approval  → Waits for human review before applying
+//  5. Terraform Apply  → Applies the saved plan
+//  6. Update Kubeconfig → Outputs the kubeconfig command for EKS
+//
+//  PURPOSE:
+//  --------
+//  This is a SEPARATE pipeline for infrastructure changes only.
+//  Application deployments use the main Jenkinsfile instead.
+//  This separation ensures infrastructure changes always go
+//  through a manual approval gate.
+//
+//  PREREQUISITES:
+//  -------------------------------------------------
+//  1. Credentials:
+//     - 'aws-credentials'  → AWS Access Key + Secret Key
+//     - 'rds-password'     → Secret text (RDS master password)
+//
+// =============================================================
+
+pipeline {
+    agent any
+
+    // ---------------------------------------------------------
+    // ENVIRONMENT — Global variables used across stages
+    // ---------------------------------------------------------
+    environment {
+        AWS_REGION       = 'ap-south-1'
+        PROJECT_NAME     = 'dcmusic'
+        EKS_CLUSTER_NAME = 'dcmusic-eks'
+    }
+
+    // ---------------------------------------------------------
+    // PIPELINE STAGES
+    // ---------------------------------------------------------
+    stages {
+
+        // =====================================================
+        // STAGE 1: CHECKOUT CODE
+        // =====================================================
+        stage('Checkout') {
+            steps {
+                echo '📥 Pulling latest code from GitHub...'
+                checkout scm
+            }
+        }
+
+        // =====================================================
+        // STAGE 2: TERRAFORM INIT
+        // =====================================================
+        // Initializes Terraform with the S3 remote backend.
+        // The state file is stored in S3 with DynamoDB locking
+        // to prevent concurrent modifications.
+        // =====================================================
+        stage('Terraform Init') {
+            steps {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'aws-credentials',
+                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                ]) {
+                    dir('terraform') {
+                        script {
+                            // Get AWS Account ID for dynamic backend config
+                            env.AWS_ACCOUNT_ID = sh(
+                                script: "aws sts get-caller-identity --query Account --output text",
+                                returnStdout: true
+                            ).trim()
+                        }
+
+                        echo '🏗️ Initializing Terraform with S3 remote state...'
+                        sh """
+                            terraform init \\
+                              -backend-config="bucket=dcmusic-tf-state-${env.AWS_ACCOUNT_ID}" \\
+                              -backend-config="key=dev/terraform.tfstate" \\
+                              -backend-config="region=${AWS_REGION}" \\
+                              -backend-config="dynamodb_table=dcmusic-tf-lock" \\
+                              -backend-config="encrypt=true"
+                        """
+                        echo '✅ Terraform initialized!'
+                    }
+                }
+            }
+        }
+
+        // =====================================================
+        // STAGE 3: TERRAFORM PLAN
+        // =====================================================
+        // Creates an execution plan and saves it to a file.
+        // This plan file is used in the Apply stage to ensure
+        // exactly what was reviewed gets applied.
+        // =====================================================
+        stage('Terraform Plan') {
+            steps {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'aws-credentials',
+                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'],
+                    string(credentialsId: 'rds-password', variable: 'DB_PASSWORD')
+                ]) {
+                    dir('terraform') {
+                        echo '📋 Planning infrastructure changes...'
+                        sh """
+                            terraform plan \\
+                              -var="db_password=${DB_PASSWORD}" \\
+                              -var="ec2_key_name=my-key-pair" \\
+                              -out=tfplan
+                        """
+                        echo '✅ Terraform plan saved to tfplan'
+                    }
+                }
+            }
+        }
+
+        // =====================================================
+        // STAGE 4: MANUAL APPROVAL
+        // =====================================================
+        // Pauses the pipeline and waits for a human to review
+        // the Terraform plan output above. This is a safety gate
+        // to prevent unintended infrastructure changes.
+        // =====================================================
+        stage('Manual Approval') {
+            steps {
+                echo '⏸️ Waiting for manual approval...'
+                input message: 'Review terraform plan. Proceed?',
+                      ok: 'Apply'
+            }
+        }
+
+        // =====================================================
+        // STAGE 5: TERRAFORM APPLY
+        // =====================================================
+        // Applies the saved plan file. Only runs after manual
+        // approval to ensure the reviewed plan is what gets
+        // applied to the AWS infrastructure.
+        // =====================================================
+        stage('Terraform Apply') {
+            steps {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'aws-credentials',
+                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'],
+                    string(credentialsId: 'rds-password', variable: 'DB_PASSWORD')
+                ]) {
+                    dir('terraform') {
+                        echo '🚀 Applying infrastructure changes...'
+                        sh 'terraform apply -auto-approve tfplan'
+                        echo '✅ Infrastructure updated successfully!'
+                    }
+                }
+            }
+        }
+
+        // =====================================================
+        // STAGE 6: UPDATE KUBECONFIG
+        // =====================================================
+        // After infrastructure is provisioned, outputs the
+        // command to configure kubectl for the new EKS cluster.
+        // This is the bridge between infra and app deployment.
+        // =====================================================
+        stage('Update Kubeconfig') {
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+                                  credentialsId: 'aws-credentials',
+                                  accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                  secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+
+                    echo '🔧 Configuring kubectl for EKS cluster...'
+                    sh "aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_REGION}"
+
+                    echo """
+                    ✅ ================================================
+                    ✅  INFRASTRUCTURE READY!
+                    ✅ ================================================
+                    ✅  To configure kubectl on your local machine:
+                    ✅  aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_REGION}
+                    ✅
+                    ✅  Then verify with:
+                    ✅  kubectl get nodes
+                    ✅ ================================================
+                    """
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------
+    // POST ACTIONS
+    // ---------------------------------------------------------
+    post {
+        success {
+            echo '✅ Infrastructure pipeline completed successfully!'
+        }
+        failure {
+            echo '❌ Infrastructure pipeline failed! Check the logs above.'
+        }
+    }
+}

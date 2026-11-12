@@ -1,0 +1,31 @@
+{{- if .Values.backend.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "dcmusic.fullname" . }}-backend-pdb
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "dcmusic.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  minAvailable: {{ .Values.backend.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "dcmusic.backend.selectorLabels" . | nindent 6 }}
+{{- end }}
+---
+{{- if .Values.frontend.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "dcmusic.fullname" . }}-frontend-pdb
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "dcmusic.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  minAvailable: {{ .Values.frontend.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "dcmusic.frontend.selectorLabels" . | nindent 6 }}
+{{- end }}

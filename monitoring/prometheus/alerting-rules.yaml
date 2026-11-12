@@ -1,0 +1,99 @@
+# ==============================================================
+#  PrometheusRule CRD — DC Music Alerting Rules
+# ==============================================================
+#  Custom alerts for the DC Music application:
+#   - HighPodCPU:       CPU > 80% for 5 minutes
+#   - PodCrashLooping:  Restarts > 3 in 10 minutes
+#   - HighErrorRate:    5xx errors > 5% for 2 minutes
+#   - PodNotReady:      Pod not ready > 5 minutes
+#   - HighMemoryUsage:  Memory > 85% for 5 minutes
+# ==============================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: dcmusic-alerts
+  namespace: monitoring
+  labels:
+    app: dcmusic
+    release: prometheus
+spec:
+  groups:
+    - name: dcmusic.alerts
+      rules:
+
+        # ---- High CPU Usage ----
+        # Fires when any pod's CPU exceeds 80% of its limit for 5 minutes
+        - alert: HighPodCPU
+          expr: |
+            (
+              sum(rate(container_cpu_usage_seconds_total{namespace="dcmusic", container!=""}[5m])) by (pod)
+              /
+              sum(kube_pod_container_resource_limits{namespace="dcmusic", resource="cpu"}) by (pod)
+            ) * 100 > 80
+          for: 5m
+          labels:
+            severity: warning
+            team: dcmusic
+          annotations:
+            summary: "High CPU usage on pod {{ $labels.pod }}"
+            description: "Pod {{ $labels.pod }} in namespace dcmusic has been using >80% CPU for 5 minutes. Current value: {{ $value | printf \"%.1f\" }}%"
+
+        # ---- Pod Crash Looping ----
+        # Fires when a pod has restarted more than 3 times in the last 10 minutes
+        - alert: PodCrashLooping
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="dcmusic"}[10m]) > 3
+          for: 0m
+          labels:
+            severity: critical
+            team: dcmusic
+          annotations:
+            summary: "Pod {{ $labels.pod }} is crash looping"
+            description: "Pod {{ $labels.pod }} in namespace dcmusic has restarted {{ $value | printf \"%.0f\" }} times in the last 10 minutes."
+
+        # ---- High Error Rate (5xx) ----
+        # Fires when more than 5% of HTTP responses are 5xx errors for 2 minutes
+        - alert: HighErrorRate
+          expr: |
+            (
+              sum(rate(http_server_requests_seconds_count{namespace="dcmusic", status=~"5.."}[2m]))
+              /
+              sum(rate(http_server_requests_seconds_count{namespace="dcmusic"}[2m]))
+            ) * 100 > 5
+          for: 2m
+          labels:
+            severity: critical
+            team: dcmusic
+          annotations:
+            summary: "High 5xx error rate in dcmusic"
+            description: "More than 5% of HTTP responses are 5xx errors. Current error rate: {{ $value | printf \"%.1f\" }}%"
+
+        # ---- Pod Not Ready ----
+        # Fires when a pod is not in Ready condition for more than 5 minutes
+        - alert: PodNotReady
+          expr: |
+            kube_pod_status_ready{namespace="dcmusic", condition="true"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            team: dcmusic
+          annotations:
+            summary: "Pod {{ $labels.pod }} is not ready"
+            description: "Pod {{ $labels.pod }} in namespace dcmusic has not been ready for more than 5 minutes."
+
+        # ---- High Memory Usage ----
+        # Fires when any pod's memory exceeds 85% of its limit for 5 minutes
+        - alert: HighMemoryUsage
+          expr: |
+            (
+              sum(container_memory_working_set_bytes{namespace="dcmusic", container!=""}) by (pod)
+              /
+              sum(kube_pod_container_resource_limits{namespace="dcmusic", resource="memory"}) by (pod)
+            ) * 100 > 85
+          for: 5m
+          labels:
+            severity: warning
+            team: dcmusic
+          annotations:
+            summary: "High memory usage on pod {{ $labels.pod }}"
+            description: "Pod {{ $labels.pod }} in namespace dcmusic has been using >85% memory for 5 minutes. Current value: {{ $value | printf \"%.1f\" }}%"

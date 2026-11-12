@@ -1,0 +1,125 @@
+# ==============================================================
+#  kube-prometheus-stack Helm Values — DC Music
+# ==============================================================
+#  Tuned for AWS free-tier (small resource limits).
+#  Grafana exposed via LoadBalancer (no DNS/TLS needed).
+# ==============================================================
+
+# ---- Grafana Configuration ----
+grafana:
+  # Admin credentials (change in production!)
+  adminUser: admin
+  adminPassword: admin
+
+  # Expose Grafana via LoadBalancer (accessible without DNS)
+  service:
+    type: LoadBalancer
+
+  # Resource limits suitable for free tier
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+  # Auto-discover dashboards from ConfigMaps with label grafana_dashboard=1
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: monitoring
+
+# ---- Prometheus Configuration ----
+prometheus:
+  prometheusSpec:
+    # Retain metrics for 7 days
+    retention: 7d
+
+    # Resource limits suitable for free tier
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+    # Storage — use emptyDir for free tier (data lost on restart)
+    # For persistence, uncomment the storageSpec below
+    # storageSpec:
+    #   volumeClaimTemplate:
+    #     spec:
+    #       accessModes: ["ReadWriteOnce"]
+    #       resources:
+    #         requests:
+    #           storage: 10Gi
+
+    # ServiceMonitor selector — pick up monitors from all namespaces
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+
+    # PodMonitor selector
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector: {}
+    podMonitorNamespaceSelector: {}
+
+    # PrometheusRule selector
+    ruleSelectorNilUsesHelmValues: false
+    ruleSelector: {}
+    ruleNamespaceSelector: {}
+
+# ---- Alertmanager Configuration ----
+alertmanager:
+  enabled: true
+
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+  # Basic alertmanager config — logs alerts to stdout
+  # Replace with Slack/PagerDuty/email in production
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: ['alertname', 'namespace']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: 'default'
+    receivers:
+      - name: 'default'
+        webhook_configs: []
+        # To add Slack notifications, uncomment:
+        # slack_configs:
+        #   - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+        #     channel: '#alerts'
+        #     send_resolved: true
+
+# ---- Node Exporter ----
+nodeExporter:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+# ---- Kube State Metrics ----
+kubeStateMetrics:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi

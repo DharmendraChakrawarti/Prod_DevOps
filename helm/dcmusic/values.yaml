@@ -1,0 +1,162 @@
+# ============================================================
+# DC Music — Default Helm Values
+# ============================================================
+
+# -- Global -------------------------------------------------
+nameOverride: ""
+fullnameOverride: ""
+
+namespace: dcmusic
+
+serviceAccount:
+  create: true
+  name: dcmusic-sa
+  annotations: {}
+
+# -- Backend ------------------------------------------------
+backend:
+  replicaCount: 2
+
+  image:
+    repository: ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/dcmusic-backend
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  livenessProbe:
+    httpGet:
+      path: /actuator/health
+      port: 8080
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /actuator/health
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 5
+    failureThreshold: 3
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+  env:
+    SPRING_PROFILES_ACTIVE: "aws"
+    SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+    APP_CORS_ALLOWED_ORIGINS: "*"
+
+  secret:
+    # These are PLACEHOLDERS — override per-environment or use External Secrets
+    SPRING_DATASOURCE_URL: "jdbc:mysql://REPLACE_RDS_ENDPOINT:3306/dcmusic"
+    SPRING_DATASOURCE_USERNAME: "REPLACE_USERNAME"
+    SPRING_DATASOURCE_PASSWORD: "REPLACE_PASSWORD"
+
+  uploads:
+    enabled: true
+    mountPath: /app/uploads
+    # Use emptyDir by default; set pvc.enabled for persistent storage
+    pvc:
+      enabled: false
+      storageClass: ""
+      size: 5Gi
+
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+  securityContext:
+    runAsNonRoot: false
+    readOnlyRootFilesystem: false
+
+# -- Frontend -----------------------------------------------
+frontend:
+  replicaCount: 2
+
+  image:
+    repository: ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/dcmusic-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "100m"
+    limits:
+      memory: "128Mi"
+      cpu: "200m"
+
+  livenessProbe:
+    httpGet:
+      path: /
+      port: 80
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /
+      port: 80
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    failureThreshold: 3
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+
+  env:
+    VITE_API_URL: "http://dcmusic-backend.dcmusic.svc.cluster.local:8080"
+
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+# -- Ingress ------------------------------------------------
+ingress:
+  enabled: true
+  className: ""
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
+    alb.ingress.kubernetes.io/group.name: dcmusic
+
+# -- Database (reference values for secret generation) ------
+database:
+  host: "REPLACE_RDS_ENDPOINT"
+  port: 3306
+  name: "dcmusic"
+  username: "admin"
+
+# -- Monitoring ---------------------------------------------
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    path: /actuator/prometheus
