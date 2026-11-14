@@ -56,9 +56,8 @@ pipeline {
         // =====================================================
         // STAGE 2: TERRAFORM INIT
         // =====================================================
-        // Initializes Terraform with the S3 remote backend.
-        // The state file is stored in S3 with DynamoDB locking
-        // to prevent concurrent modifications.
+        // Initializes Terraform with local state backend.
+        // (S3 remote state disabled due to AWS SCP restriction)
         // =====================================================
         stage('Terraform Init') {
             steps {
@@ -69,23 +68,8 @@ pipeline {
                      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
                 ]) {
                     dir('terraform') {
-                        script {
-                            // Get AWS Account ID for dynamic backend config
-                            env.AWS_ACCOUNT_ID = sh(
-                                script: "aws sts get-caller-identity --query Account --output text",
-                                returnStdout: true
-                            ).trim()
-                        }
-
-                        echo '🏗️ Initializing Terraform with S3 remote state...'
-                        sh """
-                            terraform init \\
-                              -backend-config="bucket=dcmusic-tf-state-${env.AWS_ACCOUNT_ID}" \\
-                              -backend-config="key=dev/terraform.tfstate" \\
-                              -backend-config="region=${AWS_REGION}" \\
-                              -backend-config="dynamodb_table=dcmusic-tf-lock" \\
-                              -backend-config="encrypt=true"
-                        """
+                        echo '🏗️ Initializing Terraform with local state...'
+                        sh 'terraform init'
                         echo '✅ Terraform initialized!'
                     }
                 }
