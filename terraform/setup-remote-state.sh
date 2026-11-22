@@ -1,12 +1,15 @@
 #!/bin/bash
 # =============================================================
-#  SETUP REMOTE STATE — Run this ONCE before terraform init
+#  SETUP REMOTE STATE BACKEND — Run ONCE before terraform init
 # =============================================================
-#  Creates:
-#    1. S3 Bucket  → stores terraform.tfstate
-#    2. DynamoDB   → state locking (prevents parallel applies)
+#  This script automatically:
+#    1. Detects your AWS Account ID dynamically
+#    2. Creates a unique S3 bucket for Terraform state (versioned + encrypted + private)
+#    3. Creates a DynamoDB table for state locking
+#    4. Prints the exact command to initialize Terraform
 #
 #  Usage:
+#    cd terraform
 #    chmod +x setup-remote-state.sh
 #    ./setup-remote-state.sh
 # =============================================================
@@ -14,12 +17,20 @@
 set -e
 
 AWS_REGION="ap-south-1"
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-BUCKET_NAME="dcmusic-tf-state-${ACCOUNT_ID}"
-DYNAMODB_TABLE="dcmusic-tf-lock"
+PROJECT_NAME="dcmusic"
+
+echo ""
+echo "🔍 Detecting AWS Account ID..."
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null) || {
+    echo "❌ Failed to get AWS Account ID. Ensure AWS CLI is configured (run 'aws configure')."
+    exit 1
+}
+
+BUCKET_NAME="${PROJECT_NAME}-tf-state-${ACCOUNT_ID}"
+DYNAMODB_TABLE="${PROJECT_NAME}-tf-lock"
 
 echo "============================================"
-echo "  Setting up Terraform Remote State"
+echo "  Setting up Terraform Remote State Backend"
 echo "============================================"
 echo "  AWS Account:    ${ACCOUNT_ID}"
 echo "  Region:         ${AWS_REGION}"
@@ -29,18 +40,19 @@ echo "============================================"
 
 # --- 1. Create S3 Bucket ---
 echo ""
-echo "📦 Creating S3 bucket: ${BUCKET_NAME}..."
+echo "📦 Checking S3 bucket: ${BUCKET_NAME}..."
 if aws s3api head-bucket --bucket "${BUCKET_NAME}" 2>/dev/null; then
-    echo "   ✅ Bucket already exists, skipping."
+    echo "   ✅ Bucket already exists, skipping creation."
 else
+    echo "   Creating S3 bucket..."
     aws s3 mb "s3://${BUCKET_NAME}" --region "${AWS_REGION}"
 
-    # Enable versioning (keeps history of state files)
+    # Enable versioning (so you can recover previous state versions)
     aws s3api put-bucket-versioning \
         --bucket "${BUCKET_NAME}" \
         --versioning-configuration Status=Enabled
 
-    # Enable encryption
+    # Enable server-side encryption (AES256)
     aws s3api put-bucket-encryption \
         --bucket "${BUCKET_NAME}" \
         --server-side-encryption-configuration '{
@@ -61,15 +73,16 @@ else
             "RestrictPublicBuckets": true
         }'
 
-    echo "   ✅ S3 bucket created with versioning + encryption!"
+    echo "   ✅ S3 bucket created (versioned + encrypted + private)!"
 fi
 
 # --- 2. Create DynamoDB Table ---
 echo ""
-echo "🔒 Creating DynamoDB table: ${DYNAMODB_TABLE}..."
+echo "🔒 Checking DynamoDB table: ${DYNAMODB_TABLE}..."
 if aws dynamodb describe-table --table-name "${DYNAMODB_TABLE}" --region "${AWS_REGION}" 2>/dev/null; then
-    echo "   ✅ Table already exists, skipping."
+    echo "   ✅ DynamoDB table already exists, skipping creation."
 else
+    echo "   Creating DynamoDB table..."
     aws dynamodb create-table \
         --table-name "${DYNAMODB_TABLE}" \
         --attribute-definitions AttributeName=LockID,AttributeType=S \
@@ -77,18 +90,26 @@ else
         --billing-mode PAY_PER_REQUEST \
         --region "${AWS_REGION}"
 
-    echo "   ✅ DynamoDB table created!"
+    echo "   ⏳ Waiting for DynamoDB table to become active..."
+    aws dynamodb wait table-exists \
+        --table-name "${DYNAMODB_TABLE}" \
+        --region "${AWS_REGION}"
+
+    echo "   ✅ DynamoDB table created successfully!"
 fi
 
 echo ""
 echo "============================================"
-echo "  ✅ Remote state setup complete!"
+echo "  ✅ Remote State Setup Complete!"
 echo "============================================"
 echo ""
-echo "  NOW UPDATE terraform/provider.tf:"
-echo "    bucket = \"${BUCKET_NAME}\""
+echo "  Run this command to initialize Terraform with this backend:"
 echo ""
-echo "  Then run:"
-echo "    cd terraform"
-echo "    terraform init"
+echo "  terraform init \\"
+echo "    -backend-config=\"bucket=${BUCKET_NAME}\" \\"
+echo "    -backend-config=\"key=dev/terraform.tfstate\" \\"
+echo "    -backend-config=\"region=${AWS_REGION}\" \\"
+echo "    -backend-config=\"dynamodb_table=${DYNAMODB_TABLE}\" \\"
+echo "    -backend-config=\"encrypt=true\""
+echo ""
 echo "============================================"

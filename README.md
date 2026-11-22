@@ -83,9 +83,10 @@ This directory includes a complete `terraform/` folder configured to deploy the 
    ```bash
    cd terraform
    ```
-2. Initialize Terraform and automatically provision remote state buckets:
+2. Initialize remote state backend (S3 + DynamoDB):
    ```bash
-   ./create-dynamic-state.sh   # (Or use the .ps1 file for Windows PowerShell)
+   chmod +x setup-remote-state.sh
+   ./setup-remote-state.sh
    ```
 3. Run the Terraform deploy command:
    ```bash

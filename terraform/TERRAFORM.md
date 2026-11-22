@@ -8,6 +8,7 @@ Complete Infrastructure-as-Code setup for the **DCMusic** application on AWS.
 
 - [Architecture Overview](#architecture-overview)
 - [Project Structure](#project-structure)
+- [Jenkins Pipelines](#jenkins-pipelines)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Module Reference](#module-reference)
@@ -106,10 +107,12 @@ terraform/
 │   ├── variables.tf
 │   └── outputs.tf
 │
-├── create-dynamic-state.sh      # Shell script to create backend via AWS CLI
-├── create-dynamic-state.ps1     # PowerShell version
-├── setup-remote-state.sh        # Alternate shell script for backend setup
-└── setup-remote-state.ps1       # Alternate PowerShell version
+├── setup-remote-state.sh        # Shell script to create backend via AWS CLI
+
+# Jenkins Pipelines (project root)
+Jenkinsfile                      # App CI/CD — build, scan, push, deploy to EKS
+Jenkinsfile.infra                # Infra provision — creates all AWS resources
+Jenkinsfile.infra.delete         # Infra teardown — destroys all AWS resources
 ```
 
 ---
@@ -153,13 +156,23 @@ cp terraform.tfvars.example terraform.tfvars
 
 > ⚠️ **Never commit `terraform.tfvars`** — it's gitignored and contains your DB password.
 
-### Step 2 — Initialize Terraform
+### Step 2 — Create remote state backend & initialize Terraform
 
 ```bash
-terraform init
-```
+# Create S3 bucket + DynamoDB table (one-time, idempotent)
+chmod +x setup-remote-state.sh
+./setup-remote-state.sh
 
-This downloads the AWS provider (~5.x) and TLS provider (~4.x).
+# Initialize Terraform with the S3 backend
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+terraform init \
+  -backend-config="bucket=dcmusic-tf-state-${ACCOUNT_ID}" \
+  -backend-config="key=dev/terraform.tfstate" \
+  -backend-config="region=ap-south-1" \
+  -backend-config="dynamodb_table=dcmusic-tf-lock" \
+  -backend-config="encrypt=true"
+```
 
 ### Step 3 — Preview the plan
 
@@ -190,6 +203,77 @@ Verify:
 kubectl get nodes
 kubectl get pods -A
 ```
+
+---
+
+## Jenkins Pipelines
+
+Three Jenkins pipelines manage the full infrastructure lifecycle:
+
+### Pipeline Overview
+
+| Pipeline | File | Purpose |
+|----------|------|---------|
+| **Infra Provision** | `Jenkinsfile.infra` | Creates/updates all AWS infrastructure |
+| **Infra Destroy** | `Jenkinsfile.infra.delete` | Tears down all AWS infrastructure |
+| **App Deploy** | `Jenkinsfile` | Builds, scans, and deploys the application to EKS |
+
+### Jenkins Credentials Required
+
+| Credential ID | Type | Description |
+|---------------|------|-------------|
+| `aws-credentials` | AWS Credentials | AWS Access Key + Secret Access Key |
+| `rds-password` | Secret text | RDS master password |
+
+### Jenkinsfile.infra — Provision Pipeline (8 stages)
+
+```
+Checkout → Setup Remote State → Init (S3) → Validate → Plan → Approval (30m) → Apply → Kubeconfig
+```
+
+| Stage | What it does |
+|-------|-------------|
+| **Setup Remote State** | Auto-creates S3 bucket + DynamoDB table (idempotent — skips if exists) |
+| **Terraform Init** | Initializes with dynamic `-backend-config` flags (no hardcoded account IDs) |
+| **Terraform Validate** | Catches syntax errors early |
+| **Terraform Plan** | Generates plan; DB password passed via `TF_VAR_db_password` env var (not `-var` flag) |
+| **Manual Approval** | 30-minute timeout; prevents accidental infra changes |
+| **Terraform Apply** | Applies the saved plan file |
+| **Update Kubeconfig** | Configures kubectl on Jenkins agent + prints command for local dev |
+
+**Setup in Jenkins:**
+1. Create a new **Pipeline** job
+2. Set **Pipeline script from SCM** → Git → your repo URL
+3. Set **Script Path** to `Jenkinsfile.infra`
+4. Run the pipeline
+
+### Jenkinsfile.infra.delete — Destroy Pipeline (6 stages)
+
+```
+Checkout → Backend Config → Init (S3) → Plan Destroy → Approval (type cluster name) → Destroy
+```
+
+| Stage | What it does |
+|-------|-------------|
+| **Setup Backend Config** | Detects AWS Account ID, constructs S3 backend vars |
+| **Plan Destroy** | Shows exactly what will be deleted + counts resources |
+| **Manual Approval** | Must type `dcmusic-eks` to confirm — prevents accidental destruction |
+| **Terraform Destroy** | Applies the destroy plan — permanently deletes all resources |
+
+> ⚠️ **This deletes EVERYTHING**: EKS cluster, RDS database (all data), VPC, ECR repos, IAM roles. The S3 state bucket and DynamoDB lock table are intentionally preserved for audit history.
+
+**Setup in Jenkins:**
+1. Create a new **Pipeline** job (e.g., `dcmusic-infra-destroy`)
+2. Set **Script Path** to `Jenkinsfile.infra.delete`
+3. **Restrict who can run this** — only admins should have access
+
+### Jenkinsfile — Application Deployment Pipeline (10 stages)
+
+```
+Checkout → AWS Setup → Tests → Build → Docker Build → Security Scan → Push ECR → Update Manifests → Deploy EKS → Verify
+```
+
+This pipeline handles CI/CD for the application code (not infrastructure). It builds Docker images, scans for vulnerabilities with Trivy, pushes to ECR, and deploys to the EKS cluster via Helm.
 
 ---
 
@@ -259,17 +343,17 @@ Both have `force_delete = true` and mutable tags (allows `:latest` overwrites).
 
 ## Remote State Setup
 
-By default, state is stored **locally** in `terraform.tfstate`. For team collaboration and safety, set up S3 remote state.
+Terraform state is stored in **S3** with **DynamoDB locking**. The backend uses a partial configuration (`backend "s3" {}` in `provider.tf`) — actual values are passed at `terraform init` time.
 
-> ⚠️ **SCP Blocker:** Your AWS Organization SCP (`p-5dyi8gbe`) may deny S3 bucket creation. Contact your org admin for an exception if needed.
+> **Jenkins handles this automatically.** The `Jenkinsfile.infra` pipeline creates the S3 bucket and DynamoDB table in its "Setup Remote State" stage, then passes the config to `terraform init`. You only need the manual steps below for local development.
 
-### Option A — Shell Script (Recommended)
+### Option A — Shell Script (Recommended for local dev)
 
 ```bash
 cd /home/dc/Desktop/Prod_DevOps/terraform
 
-chmod +x create-dynamic-state.sh
-./create-dynamic-state.sh
+chmod +x setup-remote-state.sh
+./setup-remote-state.sh
 ```
 
 This creates:
@@ -450,7 +534,7 @@ terraform force-unlock <LOCK_ID>
 ## Troubleshooting
 
 ### `Error: creating S3 Bucket: AccessDenied`
-Your AWS Organization SCP blocks S3 operations. Ask your org admin for an exception or use local state.
+Verify your IAM user or role has `s3:CreateBucket`, `s3:PutBucketVersioning`, `s3:PutEncryptionConfiguration`, and `s3:PutBucketPublicAccessBlock` permissions in the selected region.
 
 ### `Error: creating EKS Cluster: InvalidParameterException: unsupported Kubernetes version`
 Check available versions: `aws eks describe-addon-versions --region ap-south-1 | grep -o '"1\.[0-9]*"' | sort -u`

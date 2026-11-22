@@ -1,0 +1,24 @@
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backend Build artifacts
+backend/target/
+*.class
+
+# Frontend node_modules & build (handled in frontend/.gitignore, added here for root safety)
+frontend/node_modules/
+frontend/dist/
+
+# Terraform (handled in terraform/.gitignore, added here for safety)
+*.tfstate
+*.tfstate.backup
+*.tfplan
+.terraform/
+.terraform.lock.hcl

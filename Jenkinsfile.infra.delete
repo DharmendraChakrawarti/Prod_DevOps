@@ -1,0 +1,281 @@
+// =============================================================
+//  JENKINSFILE.INFRA.DELETE — Infrastructure Teardown Pipeline
+// =============================================================
+//
+//  WHAT THIS PIPELINE DOES (6 stages):
+//  ------------------------------------
+//  1. Checkout              → Pulls code from GitHub
+//  2. Setup Backend Config  → Detects AWS Account ID, constructs S3 backend vars
+//  3. Terraform Init        → Initializes Terraform with S3 backend
+//  4. Terraform Plan Destroy→ Plans the destruction (shows what will be deleted)
+//  5. Manual Approval       → DOUBLE confirmation gate (type cluster name to proceed)
+//  6. Terraform Destroy     → Destroys all infrastructure
+//
+//  ⚠️  WARNING:
+//  -------------------------------------------------------
+//  This pipeline PERMANENTLY DELETES all AWS resources
+//  managed by Terraform, including:
+//    - EKS cluster + all running workloads
+//    - RDS database + all data (no final snapshot in dev)
+//    - VPC, subnets, NAT gateway, security groups
+//    - ECR repositories + all Docker images
+//    - IAM roles
+//
+//  The S3 state bucket and DynamoDB lock table are
+//  intentionally NOT deleted (they're outside Terraform's
+//  management scope).
+//
+//  PREREQUISITES:
+//  -------------------------------------------------
+//  1. Jenkins Credentials:
+//     - 'aws-credentials'  → AWS Access Key + Secret Key
+//     - 'rds-password'     → Secret text (RDS master password)
+//
+//  2. Jenkins Agent:
+//     - Terraform >= 1.5.0 installed
+//     - AWS CLI v2 installed
+//
+// =============================================================
+
+pipeline {
+    agent any
+
+    // ---------------------------------------------------------
+    // ENVIRONMENT — Global variables used across stages
+    // ---------------------------------------------------------
+    environment {
+        AWS_REGION       = 'ap-south-1'
+        PROJECT_NAME     = 'dcmusic'
+        EKS_CLUSTER_NAME = 'dcmusic-eks'
+        ENVIRONMENT      = 'dev'
+    }
+
+    // ---------------------------------------------------------
+    // PIPELINE STAGES
+    // ---------------------------------------------------------
+    stages {
+
+        // =====================================================
+        // STAGE 1: CHECKOUT CODE
+        // =====================================================
+        stage('Checkout') {
+            steps {
+                echo '📥 Pulling latest code from GitHub...'
+                checkout scm
+            }
+        }
+
+        // =====================================================
+        // STAGE 2: SETUP BACKEND CONFIG
+        // =====================================================
+        // Detects the AWS Account ID and constructs the S3
+        // backend variables. Does NOT create any resources —
+        // the bucket and table must already exist.
+        // =====================================================
+        stage('Setup Backend Config') {
+            steps {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'aws-credentials',
+                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                ]) {
+                    script {
+                        env.AWS_ACCOUNT_ID = sh(
+                            script: "aws sts get-caller-identity --query Account --output text",
+                            returnStdout: true
+                        ).trim()
+
+                        env.TF_STATE_BUCKET = "${PROJECT_NAME}-tf-state-${env.AWS_ACCOUNT_ID}"
+                        env.TF_LOCK_TABLE   = "${PROJECT_NAME}-tf-lock"
+
+                        echo "🔧 Backend Configuration:"
+                        echo "   Account:    ${env.AWS_ACCOUNT_ID}"
+                        echo "   S3 Bucket:  ${env.TF_STATE_BUCKET}"
+                        echo "   Lock Table: ${env.TF_LOCK_TABLE}"
+                    }
+                }
+            }
+        }
+
+        // =====================================================
+        // STAGE 3: TERRAFORM INIT
+        // =====================================================
+        // Initializes Terraform with the existing S3 backend.
+        // =====================================================
+        stage('Terraform Init') {
+            steps {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'aws-credentials',
+                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                ]) {
+                    dir('terraform') {
+                        echo '🏗️ Initializing Terraform with S3 backend...'
+                        sh """
+                            terraform init \
+                              -backend-config="bucket=${env.TF_STATE_BUCKET}" \
+                              -backend-config="key=${ENVIRONMENT}/terraform.tfstate" \
+                              -backend-config="region=${AWS_REGION}" \
+                              -backend-config="dynamodb_table=${env.TF_LOCK_TABLE}" \
+                              -backend-config="encrypt=true"
+                        """
+                        echo '✅ Terraform initialized!'
+                    }
+                }
+            }
+        }
+
+        // =====================================================
+        // STAGE 4: TERRAFORM PLAN DESTROY
+        // =====================================================
+        // Shows exactly what will be destroyed. The plan output
+        // is saved so the approval stage has full visibility.
+        // =====================================================
+        stage('Terraform Plan Destroy') {
+            steps {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'aws-credentials',
+                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'],
+                    string(credentialsId: 'rds-password', variable: 'TF_VAR_db_password')
+                ]) {
+                    dir('terraform') {
+                        echo '📋 Planning infrastructure DESTRUCTION...'
+                        sh 'terraform plan -destroy -out=tfplan-destroy'
+
+                        // Count resources to be destroyed
+                        script {
+                            env.DESTROY_COUNT = sh(
+                                script: "terraform show -json tfplan-destroy | python3 -c \"import sys,json; d=json.load(sys.stdin); print(len([r for r in d.get('resource_changes',[]) if 'delete' in r.get('change',{}).get('actions',[])]))\"\n",
+                                returnStdout: true
+                            ).trim()
+                        }
+
+                        echo "⚠️  ${env.DESTROY_COUNT} resources will be DESTROYED!"
+                    }
+                }
+            }
+        }
+
+        // =====================================================
+        // STAGE 5: MANUAL APPROVAL (Double Confirmation)
+        // =====================================================
+        // Two-layer safety gate:
+        //   1. Shows a warning with resource count
+        //   2. Requires typing the cluster name to confirm
+        // Times out after 15 minutes.
+        // =====================================================
+        stage('Manual Approval') {
+            steps {
+                echo """
+                ⚠️ =============================================
+                ⚠️  DESTRUCTIVE ACTION — READ CAREFULLY
+                ⚠️ =============================================
+                ⚠️
+                ⚠️  You are about to DESTROY:
+                ⚠️    ${env.DESTROY_COUNT} AWS resources
+                ⚠️
+                ⚠️  This includes:
+                ⚠️    - EKS cluster + all workloads
+                ⚠️    - RDS database + ALL DATA
+                ⚠️    - VPC, subnets, NAT gateway
+                ⚠️    - ECR repos + Docker images
+                ⚠️    - IAM roles
+                ⚠️
+                ⚠️  This action CANNOT be undone.
+                ⚠️ =============================================
+                """
+
+                timeout(time: 15, unit: 'MINUTES') {
+                    input message: "Type '${EKS_CLUSTER_NAME}' to confirm destruction:",
+                          ok: 'DESTROY',
+                          parameters: [
+                              string(
+                                  name: 'CONFIRM_CLUSTER_NAME',
+                                  description: "Type '${EKS_CLUSTER_NAME}' to confirm you want to destroy everything",
+                                  trim: true
+                              )
+                          ]
+                }
+
+                script {
+                    if (env.CONFIRM_CLUSTER_NAME != env.EKS_CLUSTER_NAME) {
+                        error "❌ Cluster name mismatch! You typed '${env.CONFIRM_CLUSTER_NAME}' but expected '${env.EKS_CLUSTER_NAME}'. Aborting."
+                    }
+                    echo "✅ Confirmation accepted. Proceeding with destruction..."
+                }
+            }
+        }
+
+        // =====================================================
+        // STAGE 6: TERRAFORM DESTROY
+        // =====================================================
+        // Applies the destroy plan. This is the point of no
+        // return — all resources will be permanently deleted.
+        // =====================================================
+        stage('Terraform Destroy') {
+            steps {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'aws-credentials',
+                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                ]) {
+                    dir('terraform') {
+                        echo '💥 Destroying infrastructure...'
+                        sh 'terraform apply -auto-approve tfplan-destroy'
+                        echo '✅ All infrastructure has been destroyed.'
+                    }
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------
+    // POST ACTIONS
+    // ---------------------------------------------------------
+    post {
+        always {
+            dir('terraform') {
+                sh 'rm -f tfplan-destroy'
+            }
+        }
+        success {
+            echo """
+            ✅ ================================================
+            ✅  INFRASTRUCTURE DESTROYED SUCCESSFULLY
+            ✅ ================================================
+            ✅
+            ✅  All AWS resources for '${PROJECT_NAME}' in
+            ✅  '${ENVIRONMENT}' environment have been deleted.
+            ✅
+            ✅  The following are still intact:
+            ✅    - S3 state bucket (for audit history)
+            ✅    - DynamoDB lock table
+            ✅
+            ✅  To re-create infrastructure, run the
+            ✅  Jenkinsfile.infra pipeline.
+            ✅ ================================================
+            """
+        }
+        failure {
+            echo """
+            ❌ ================================================
+            ❌  DESTROY FAILED — PARTIAL STATE POSSIBLE
+            ❌ ================================================
+            ❌
+            ❌  Some resources may still exist. Check:
+            ❌    1. Jenkins console log above for errors
+            ❌    2. AWS Console for remaining resources
+            ❌    3. Run 'terraform state list' to see what's left
+            ❌
+            ❌  To retry, re-run this pipeline.
+            ❌  To force-clean, run 'terraform destroy' manually.
+            ❌ ================================================
+            """
+        }
+    }
+}
