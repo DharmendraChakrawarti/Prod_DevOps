@@ -2,14 +2,13 @@
 //  JENKINSFILE.INFRA.DELETE — Infrastructure Teardown Pipeline
 // =============================================================
 //
-//  WHAT THIS PIPELINE DOES (6 stages):
+//  WHAT THIS PIPELINE DOES (5 stages):
 //  ------------------------------------
 //  1. Checkout              → Pulls code from GitHub
-//  2. Setup Backend Config  → Detects AWS Account ID, constructs S3 backend vars
-//  3. Terraform Init        → Initializes Terraform with S3 backend
-//  4. Terraform Plan Destroy→ Plans the destruction (shows what will be deleted)
-//  5. Manual Approval       → DOUBLE confirmation gate (type cluster name to proceed)
-//  6. Terraform Destroy     → Destroys all infrastructure
+//  2. Terraform Init        → Initializes Terraform with S3 backend
+//  3. Terraform Plan Destroy→ Plans the destruction (shows what will be deleted)
+//  4. Manual Approval       → DOUBLE confirmation gate (type cluster name to proceed)
+//  5. Terraform Destroy     → Destroys all infrastructure
 //
 //  ⚠️  WARNING:
 //  -------------------------------------------------------
@@ -66,40 +65,7 @@ pipeline {
         }
 
         // =====================================================
-        // STAGE 2: SETUP BACKEND CONFIG
-        // =====================================================
-        // Detects the AWS Account ID and constructs the S3
-        // backend variables. Does NOT create any resources —
-        // the bucket and table must already exist.
-        // =====================================================
-        stage('Setup Backend Config') {
-            steps {
-                withCredentials([
-                    [$class: 'AmazonWebServicesCredentialsBinding',
-                     credentialsId: 'aws-credentials',
-                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
-                ]) {
-                    script {
-                        env.AWS_ACCOUNT_ID = sh(
-                            script: "aws sts get-caller-identity --query Account --output text",
-                            returnStdout: true
-                        ).trim()
-
-                        env.TF_STATE_BUCKET = "${PROJECT_NAME}-tf-state-${env.AWS_ACCOUNT_ID}"
-                        env.TF_LOCK_TABLE   = "${PROJECT_NAME}-tf-lock"
-
-                        echo "🔧 Backend Configuration:"
-                        echo "   Account:    ${env.AWS_ACCOUNT_ID}"
-                        echo "   S3 Bucket:  ${env.TF_STATE_BUCKET}"
-                        echo "   Lock Table: ${env.TF_LOCK_TABLE}"
-                    }
-                }
-            }
-        }
-
-        // =====================================================
-        // STAGE 3: TERRAFORM INIT
+        // STAGE 2: TERRAFORM INIT
         // =====================================================
         // Initializes Terraform with the existing S3 backend.
         // =====================================================
@@ -114,11 +80,12 @@ pipeline {
                     dir('terraform') {
                         echo '🏗️ Initializing Terraform with S3 backend...'
                         sh """
-                            terraform init \
-                              -backend-config="bucket=${env.TF_STATE_BUCKET}" \
-                              -backend-config="key=${ENVIRONMENT}/terraform.tfstate" \
-                              -backend-config="region=${AWS_REGION}" \
-                              -backend-config="dynamodb_table=${env.TF_LOCK_TABLE}" \
+                            ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text)
+                            terraform init \\
+                              -backend-config="bucket=${PROJECT_NAME}-tf-state-\${ACCOUNT_ID}" \\
+                              -backend-config="key=${ENVIRONMENT}/terraform.tfstate" \\
+                              -backend-config="region=${AWS_REGION}" \\
+                              -backend-config="dynamodb_table=${PROJECT_NAME}-tf-lock" \\
                               -backend-config="encrypt=true"
                         """
                         echo '✅ Terraform initialized!'

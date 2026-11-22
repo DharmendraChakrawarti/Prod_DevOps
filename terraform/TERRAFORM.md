@@ -247,15 +247,15 @@ Checkout → Setup Remote State → Init (S3) → Validate → Plan → Approval
 3. Set **Script Path** to `Jenkinsfile.infra`
 4. Run the pipeline
 
-### Jenkinsfile.infra.delete — Destroy Pipeline (6 stages)
+### Jenkinsfile.infra.delete — Destroy Pipeline (5 stages)
 
 ```
-Checkout → Backend Config → Init (S3) → Plan Destroy → Approval (type cluster name) → Destroy
+Checkout → Init (S3) → Plan Destroy → Approval (type cluster name) → Destroy
 ```
 
 | Stage | What it does |
 |-------|-------------|
-| **Setup Backend Config** | Detects AWS Account ID, constructs S3 backend vars |
+| **Terraform Init** | Connects to existing S3 remote state |
 | **Plan Destroy** | Shows exactly what will be deleted + counts resources |
 | **Manual Approval** | Must type `dcmusic-eks` to confirm — prevents accidental destruction |
 | **Terraform Destroy** | Applies the destroy plan — permanently deletes all resources |
