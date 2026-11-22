@@ -91,6 +91,12 @@ module "eks" {
   node_min_size       = var.node_min_size
   node_max_size       = var.node_max_size
   node_disk_size      = var.node_disk_size
+
+  # Ensure IAM policy attachments and VPC networking (NAT gateway) are fully ready
+  depends_on = [
+    module.iam,
+    module.vpc
+  ]
 }
 
 # -----------------------------------------------------------
