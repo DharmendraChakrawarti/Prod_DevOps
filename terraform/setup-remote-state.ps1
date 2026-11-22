@@ -13,8 +13,8 @@ $ErrorActionPreference = "Stop"
 
 $AWS_REGION = "ap-south-1"
 $ACCOUNT_ID = (aws sts get-caller-identity --query Account --output text).Trim()
-$BUCKET_NAME = "student-mgmt-tf-state-$ACCOUNT_ID"
-$DYNAMODB_TABLE = "student-mgmt-tf-lock"
+$BUCKET_NAME = "dcmusic-tf-state-$ACCOUNT_ID"
+$DYNAMODB_TABLE = "dcmusic-tf-lock"
 
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  Setting up Terraform Remote State"        -ForegroundColor Cyan
