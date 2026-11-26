@@ -155,23 +155,27 @@ pipeline {
                 ⚠️ =============================================
                 """
 
-                timeout(time: 15, unit: 'MINUTES') {
-                    input message: "Type '${EKS_CLUSTER_NAME}' to confirm destruction:",
-                          ok: 'DESTROY',
-                          parameters: [
-                              string(
-                                  name: 'CONFIRM_CLUSTER_NAME',
-                                  description: "Type '${EKS_CLUSTER_NAME}' to confirm you want to destroy everything",
-                                  trim: true
-                              )
-                          ]
-                }
-
                 script {
-                    if (env.CONFIRM_CLUSTER_NAME != env.EKS_CLUSTER_NAME) {
-                        error "❌ Cluster name mismatch! You typed '${env.CONFIRM_CLUSTER_NAME}' but expected '${env.EKS_CLUSTER_NAME}'. Aborting."
+                    timeout(time: 15, unit: 'MINUTES') {
+                        def userInput = input(
+                            message: "Type '${EKS_CLUSTER_NAME}' to confirm destruction:",
+                            ok: 'DESTROY',
+                            parameters: [
+                                string(
+                                    name: 'CONFIRM_CLUSTER_NAME',
+                                    description: "Type '${EKS_CLUSTER_NAME}' to confirm you want to destroy everything",
+                                    trim: true
+                                )
+                            ]
+                        )
+
+                        def confirmName = (userInput instanceof Map) ? userInput['CONFIRM_CLUSTER_NAME'] : userInput?.toString()
+
+                        if (confirmName?.trim() != env.EKS_CLUSTER_NAME) {
+                            error "❌ Cluster name mismatch! You typed '${confirmName}' but expected '${env.EKS_CLUSTER_NAME}'. Aborting."
+                        }
+                        echo "✅ Confirmation accepted: '${confirmName}'. Proceeding with destruction..."
                     }
-                    echo "✅ Confirmation accepted. Proceeding with destruction..."
                 }
             }
         }
