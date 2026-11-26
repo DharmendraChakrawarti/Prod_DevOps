@@ -703,7 +703,7 @@ Click **"Save"**
 2. A new build appears in "Build History" (e.g., `#1`)
 3. Click on the build number → Click **"Console Output"** to watch live
 
-### 10.4 — What Happens: Stage-by-Stage Walkthrough
+### 10.4 — What Happens: Stage-by-Stage Walkthrough (8 Stages)
 
 ```
 ╔══════════════════════════════════════════════════════════════════╗
@@ -713,141 +713,87 @@ Click **"Save"**
 ║  📥 Clones your GitHub repo to the Jenkins workspace.           ║
 ║                                                                  ║
 ║  Jenkinsfile.infra code:                                        ║
-║  ┌──────────────────────────────────────────────────────┐       ║
-║  │  stage('Checkout') {                                 │       ║
-║  │      steps {                                         │       ║
-║  │          checkout scm                                │       ║
-║  │      }                                               │       ║
-║  │  }                                                   │       ║
-║  └──────────────────────────────────────────────────────┘       ║
-║                                                                  ║
-║  What you see in Console Output:                                ║
-║  > git fetch --no-tags --progress -- https://github.com/...    ║
-║  > Checking out Revision abc123def456                           ║
-║                                                                  ║
-║  ✅ If this fails → Check GitHub URL and credentials            ║
+║  stage('Checkout') {                                             ║
+║      steps { checkout scm }                                     ║
+║  }                                                               ║
 ╚══════════════════════════════════════════════════════════════════╝
                               ↓
 ╔══════════════════════════════════════════════════════════════════╗
-║  STAGE 2: TERRAFORM INIT                              ⏱️ ~30s  ║
+║  STAGE 2: SETUP REMOTE STATE BACKEND                   ⏱️ ~15s  ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║                                                                  ║
-║  🏗️ Initializes Terraform, connects to S3 backend.             ║
+║  🔧 Idempotently runs setup-remote-state.sh to guarantee that    ║
+║     the S3 state bucket exists before running terraform init.    ║
 ║                                                                  ║
-║  What the code does (2 commands):                               ║
+║  Commands:                                                      ║
+║  cd terraform                                                    ║
+║  chmod +x setup-remote-state.sh && ./setup-remote-state.sh      ║
 ║                                                                  ║
-║  1. Gets your AWS Account ID dynamically:                       ║
-║     aws sts get-caller-identity --query Account --output text   ║
-║     → Returns: 123456789012                                     ║
-║                                                                  ║
-║  2. Initializes Terraform with dynamic backend:                 ║
-║     terraform init \                                            ║
-║       -backend-config="bucket=dcmusic-tf-state-123456789012" \  ║
-║       -backend-config="key=prod/terraform.tfstate" \            ║
-║       -backend-config="region=ap-south-1" \                     ║
-║       -backend-config="use_lockfile=true"                       ║
-║                                                                  ║
-║  Console Output:                                                ║
-║  > Initializing modules...                                      ║
-║  > Downloading module "vpc"... "security"... "ecr"...           ║
-║  > Initializing the backend... (S3)                             ║
-║  > Initializing provider plugins...                             ║
-║  > - hashicorp/aws v5.x.x                                      ║
-║  > - hashicorp/tls v4.x.x                                      ║
-║  > Terraform has been successfully initialized! ✅              ║
-║                                                                  ║
-║  ❌ If this fails:                                               ║
-║  → "bucket does not exist" → Re-run Phase 6 Step 2             ║
-║  → "error configuring S3" → Check aws-credentials in Jenkins    ║
+║  ✅ Ensures S3 versioning & AES-256 encryption are active.       ║
 ╚══════════════════════════════════════════════════════════════════╝
                               ↓
 ╔══════════════════════════════════════════════════════════════════╗
-║  STAGE 3: TERRAFORM PLAN                             ⏱️ ~1-2m  ║
+║  STAGE 3: TERRAFORM INIT                              ⏱️ ~30s  ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║                                                                  ║
-║  📋 Shows what AWS resources will be created.                   ║
+║  🏗️ Initializes Terraform with dynamic S3 backend and native     ║
+║     state locking (use_lockfile=true, no DynamoDB needed).      ║
 ║                                                                  ║
-║  Command run:                                                   ║
-║  terraform plan \                                               ║
-║    -var="db_password=<from rds-password credential>" \           ║
-║    -var="ec2_key_name=my-key-pair" \                            ║
-║    -out=tfplan                                                  ║
-║                                                                  ║
-║  Console Output (READ THIS CAREFULLY!):                         ║
-║  > Plan: ~30 to add, 0 to change, 0 to destroy.                ║
-║  >                                                              ║
-║  > Resources to create:                                         ║
-║  >   module.vpc.aws_vpc.main                                   ║
-║  >   module.vpc.aws_subnet.public[0]                            ║
-║  >   module.vpc.aws_subnet.public[1]                            ║
-║  >   module.vpc.aws_subnet.private[0]                           ║
-║  >   module.vpc.aws_subnet.private[1]                           ║
-║  >   module.vpc.aws_internet_gateway.main                       ║
-║  >   module.vpc.aws_nat_gateway.main                            ║
-║  >   module.security.aws_security_group.eks_cluster             ║
-║  >   module.security.aws_security_group.eks_nodes               ║
-║  >   module.security.aws_security_group.rds                     ║
-║  >   module.ecr.aws_ecr_repository.backend                     ║
-║  >   module.ecr.aws_ecr_repository.frontend                    ║
-║  >   module.iam.aws_iam_role.eks_cluster_role                   ║
-║  >   module.iam.aws_iam_role.eks_nodes_role                     ║
-║  >   module.eks.aws_eks_cluster.main                            ║
-║  >   module.eks.aws_eks_node_group.main                         ║
-║  >   module.rds.aws_db_instance.main                            ║
-║  >   ... (about 30 resources total)                             ║
-║                                                                  ║
-║  The plan is SAVED to file 'tfplan' for the apply stage.        ║
-║                                                                  ║
-║  ⚠️ Review the plan output! Check that:                         ║
-║     - It says "add" not "destroy"                               ║
-║     - Instance types are what you expect                        ║
-║     - Region is ap-south-1                                      ║
+║  Command:                                                       ║
+║  ACCOUNT_ID=$(aws sts get-caller-identity --query Account)      ║
+║  echo "yes" | terraform init \                                  ║
+║    -backend-config="bucket=dcmusic-tf-state-${ACCOUNT_ID}" \    ║
+║    -backend-config="key=dev/terraform.tfstate" \                ║
+║    -backend-config="region=ap-south-1" \                        ║
+║    -backend-config="use_lockfile=true" \                        ║
+║    -backend-config="encrypt=true"                               ║
 ╚══════════════════════════════════════════════════════════════════╝
                               ↓
 ╔══════════════════════════════════════════════════════════════════╗
-║  STAGE 4: MANUAL APPROVAL ⏸️                        ⏱️ PAUSED  ║
+║  STAGE 4: TERRAFORM VALIDATE                          ⏱️ ~15s  ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║                                                                  ║
-║  ⏸️ Pipeline STOPS here and waits for your approval.            ║
-║                                                                  ║
-║  You will see this in the Jenkins UI:                            ║
-║                                                                  ║
-║  ┌────────────────────────────────────────────────┐              ║
-║  │  Review terraform plan. Proceed?               │              ║
-║  │                                                │              ║
-║  │  [ Abort ]              [ Apply ]              │              ║
-║  └────────────────────────────────────────────────┘              ║
-║                                                                  ║
-║  WHERE TO FIND THIS PROMPT:                                      ║
-║  → Method 1: Look at the build page — "Paused for Input" link  ║
-║  → Method 2: Console Output → scroll to bottom → click link    ║
-║  → Method 3: Stage View → blue/flashing "Manual Approval" box  ║
-║                                                                  ║
-║  ACTIONS:                                                        ║
-║  ✅ Click "Apply" → Continues to Stage 5 (creates resources)   ║
-║  ❌ Click "Abort" → Pipeline stops, NOTHING is created          ║
-║                                                                  ║
-║  ⚠️ Take your time! There is no timeout. Review the plan       ║
-║     output before clicking "Apply".                              ║
+║  🔍 Checks syntax and module structure before running plan.     ║
+║  Command: terraform validate                                    ║
 ╚══════════════════════════════════════════════════════════════════╝
                               ↓
 ╔══════════════════════════════════════════════════════════════════╗
-║  STAGE 5: TERRAFORM APPLY                         ⏱️ ~15-20m   ║
+║  STAGE 5: TERRAFORM PLAN                             ⏱️ ~1-2m  ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║                                                                  ║
-║  🚀 Creates ALL AWS resources. THIS IS THE BIG ONE.             ║
+║  📋 Generates execution plan and saves binary to 'tfplan'.      ║
+║     DB password passed via secure TF_VAR_db_password env var.   ║
 ║                                                                  ║
-║  Command run:                                                   ║
-║  terraform apply -auto-approve tfplan                           ║
+║  Command: terraform plan -out=tfplan                             ║
 ║                                                                  ║
-║  Console Output (takes 15-20 minutes):                          ║
-║  > module.vpc.aws_vpc.main: Creating...                         ║
-║  > module.vpc.aws_vpc.main: Creation complete [3s]              ║
-║  > module.vpc.aws_subnet.public[0]: Creating...                 ║
-║  > module.vpc.aws_subnet.public[1]: Creating...                 ║
-║  > ...                                                          ║
-║  > module.eks.aws_eks_cluster.main: Creating...                 ║
-║  > module.eks.aws_eks_cluster.main: Still creating... [5m]      ║
+║  Plan output shows: VPC, Subnets, NAT GW, EKS 1.35, RDS, ECR    ║
+╚══════════════════════════════════════════════════════════════════╝
+                              ↓
+╔══════════════════════════════════════════════════════════════════╗
+║  STAGE 6: MANUAL APPROVAL ⏸️ (30 min timeout)         ⏱️ PAUSED  ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                  ║
+║  ⏸️ Pipeline pauses and asks for interactive confirmation.       ║
+║     Prompt: "Review the Terraform plan above. Proceed with apply?"║
+║     Click [ Apply ] to proceed or [ Abort ] to stop.             ║
+╚══════════════════════════════════════════════════════════════════╝
+                              ↓
+╔══════════════════════════════════════════════════════════════════╗
+║  STAGE 7: TERRAFORM APPLY                         ⏱️ ~15-20m   ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                  ║
+║  🚀 Applies the approved tfplan file without interactive prompt: ║
+║  Command: terraform apply -auto-approve tfplan                  ║
+╚══════════════════════════════════════════════════════════════════╝
+                              ↓
+╔══════════════════════════════════════════════════════════════════╗
+║  STAGE 8: UPDATE KUBECONFIG                           ⏱️ ~15s  ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                  ║
+║  🔧 Automatically updates kubeconfig on the Jenkins agent:       ║
+║  Command: aws eks update-kubeconfig --name dcmusic-eks ...      ║
+║  Verifies cluster endpoint and prints local setup instructions.  ║
+╚══════════════════════════════════════════════════════════════════╝
 ║  > module.eks.aws_eks_cluster.main: Still creating... [10m]     ║
 ║  > module.eks.aws_eks_cluster.main: Creation complete [12m]     ║ ← SLOWEST
 ║  > ...                                                          ║
@@ -1203,40 +1149,35 @@ Click **"Save"**
 ╔══════════════════════════════════════════════════════════════════╗
 ║  STAGE 9: DEPLOY TO EKS                            ⏱️ ~2-5m    ║
 ╠══════════════════════════════════════════════════════════════════╣
-║  🚀 Deploys the app to EKS using Helm (with kubectl fallback). ║
+║  🚀 Deploys the app to EKS using Helm with dynamic RDS fetch.  ║
 ║                                                                  ║
 ║  Uses credentials: 'aws-credentials' + 'rds-password'          ║
 ║                                                                  ║
 ║  Step 1: Configure kubectl                                      ║
 ║  aws eks update-kubeconfig --name dcmusic-eks --region ap-south-1║
 ║                                                                  ║
-║  Step 2: PRIMARY — Helm upgrade                                 ║
+║  Step 2: Dynamically fetch RDS MySQL Endpoint from AWS:         ║
+║  rdsHost=$(aws rds describe-db-instances \                      ║
+║    --db-instance-identifier dcmusic-dev-mysql \                  ║
+║    --query 'DBInstances[0].Endpoint.Address' --output text)     ║
+║                                                                  ║
+║  Step 3: PRIMARY — Helm upgrade with dynamic secrets:           ║
 ║  helm upgrade --install dcmusic helm/dcmusic \                   ║
 ║    --namespace dcmusic --create-namespace \                      ║
-║    --set backend.image.repository=<ECR_BACKEND> \               ║
-║    --set backend.image.tag=7 \                                  ║
-║    --set frontend.image.repository=<ECR_FRONTEND> \             ║
-║    --set frontend.image.tag=7 \                                 ║
-║    --set backend.env.DB_PASSWORD=<rds-password> \               ║
-║    --wait --timeout 300s                                        ║
+║    --set backend.image.repository=${ECR_BACKEND} \               ║
+║    --set backend.image.tag=${BUILD_NUMBER} \                     ║
+║    --set frontend.image.repository=${ECR_FRONTEND} \             ║
+║    --set frontend.image.tag=${BUILD_NUMBER} \                    ║
+║    --set backend.secret.SPRING_DATASOURCE_URL="jdbc:mysql://${rdsHost}:3306/dcmusic_db" \
+║    --set backend.secret.SPRING_DATASOURCE_USERNAME="admin" \     ║
+║    --set backend.secret.SPRING_DATASOURCE_PASSWORD="${DB_PASSWORD}" \
+║    --set frontend.service.type=LoadBalancer \                    ║
+║    --set backend.service.type=LoadBalancer \                     ║
+║    --wait --timeout 300s                                         ║
 ║                                                                  ║
-║  Helm creates/updates these Kubernetes resources:               ║
-║  • Namespace: dcmusic                                           ║
-║  • ServiceAccount: dcmusic-sa                                   ║
-║  • Backend: Deployment (2 replicas) + Service + HPA + ConfigMap ║
-║  • Frontend: Deployment (2 replicas) + Service + HPA + ConfigMap║
-║  • Backend Secret (DB credentials)                              ║
-║  • Ingress (ALB, internet-facing, HTTP port 80)                 ║
-║  • PodDisruptionBudgets                                         ║
-║                                                                  ║
-║  Step 3: FALLBACK (if Helm fails)                               ║
-║  kubectl set image deployment/dcmusic-backend \                  ║
-║    dcmusic-backend=<ECR_BACKEND>:7 -n dcmusic                   ║
-║  kubectl set image deployment/dcmusic-frontend \                 ║
-║    dcmusic-frontend=<ECR_FRONTEND>:7 -n dcmusic                 ║
-║                                                                  ║
-║  Console Output:                                                ║
-║  > Release "dcmusic" has been upgraded. Happy Helming! ✅       ║
+║  Step 4: FALLBACK (if Helm fails)                               ║
+║  kubectl set image deployment/dcmusic-backend ...               ║
+║  kubectl set image deployment/dcmusic-frontend ...              ║
 ╚══════════════════════════════════════════════════════════════════╝
                               ↓
 ╔══════════════════════════════════════════════════════════════════╗
@@ -1279,7 +1220,10 @@ Click **"Save"**
 ║  ✅  Frontend:   <ECR>/dcmusic-frontend:7                       ║
 ║                                                                  ║
 ║  On FAILURE ❌:                                                  ║
-║  ❌ Pipeline failed! Check the logs above for details.          ║
+║  ❌ Pipeline failed! Automatically collects pod diagnostics:    ║
+║     kubectl get pods -n dcmusic -o wide                         ║
+║     kubectl describe pods -n dcmusic                            ║
+║     kubectl logs -n dcmusic -l app.kubernetes.io/component=backend --tail=50
 ║                                                                  ║
 ║  ALWAYS (success or failure):                                    ║
 ║  docker image prune -f                                          ║
@@ -1373,7 +1317,7 @@ kubectl apply -f /home/dc/Desktop/Prod_DevOps/monitoring/prometheus/alerting-rul
 | **Pushed new code** | `dcmusic-app` only | Automatic (webhook) | ~5-8m |
 | **Want to scale nodes** | Edit `terraform/variables.tf` → push → `dcmusic-infra` | Manual "Build Now" | ~5m |
 | **Changed Terraform modules** | `dcmusic-infra` | Manual "Build Now" | ~5-15m |
-| **Want to destroy everything** | `terraform destroy` locally | NOT a Jenkins job | ~15m |
+| **Want to destroy everything** | `dcmusic-infra-delete` (`Jenkinsfile.infra.delete`) | Manual "Build Now" (type `dcmusic-eks` to confirm) | ~15m |
 | **Rollback to previous version** | `dcmusic-app` with older tag | See rollback steps below | ~3m |
 
 ### Quick Rollback
