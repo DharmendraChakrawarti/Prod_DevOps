@@ -32,7 +32,7 @@ availability_zones   = ["ap-south-1a", "ap-south-1b"]
 # EKS Configuration
 # -------------------------------------------------------
 cluster_name       = "dcmusic-eks"
-kubernetes_version = "1.29"
+kubernetes_version = "1.31"
 
 # Node group — t3.small is the minimum viable size for EKS workloads
 # t2.micro/t3.micro are too small (OOM for kubelet + system pods)
