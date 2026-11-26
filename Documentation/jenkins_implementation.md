@@ -1,71 +1,73 @@
 # 🛠️ Jenkins CI/CD Complete Implementation Guide — DC Music
 
-> Full step-by-step guide to set up, configure, and run both Jenkins pipelines. Every step, every click, every command — based on the actual project files.
+> Full step-by-step guide to set up, configure, and run all 3 Jenkins pipelines (Infrastructure, Application Delivery, and Teardown). Every step, credential, and command based on the active project codebase.
 
 ---
 
 ## 📑 Table of Contents
 
-1. [Architecture Overview — Two Pipelines](#1-architecture-overview--two-pipelines)
+1. [Architecture Overview — Three Pipelines](#1-architecture-overview--three-pipelines)
 2. [Complete Project Structure Reference](#2-complete-project-structure-reference)
 3. [Prerequisites Checklist](#3-prerequisites-checklist)
 4. [Phase 1 — Jenkins Server Installation](#4-phase-1--jenkins-server-installation)
 5. [Phase 2 — Plugin Installation (Step by Step)](#5-phase-2--plugin-installation-step-by-step)
 6. [Phase 3 — Global Tool Configuration (Maven & Node)](#6-phase-3--global-tool-configuration-maven--node)
-7. [Phase 4 — Credentials Setup (3 Credentials)](#7-phase-4--credentials-setup-3-credentials)
+7. [Phase 4 — Credentials Setup](#7-phase-4--credentials-setup)
 8. [Phase 5 — Install CLI Tools on Jenkins Agent](#8-phase-5--install-cli-tools-on-jenkins-agent)
-9. [Phase 6 — Pre-Pipeline AWS Setup (S3 + DynamoDB for Terraform State)](#9-phase-6--pre-pipeline-aws-setup-s3--dynamodb-for-terraform-state)
+9. [Phase 6 — Pre-Pipeline AWS Setup (S3 Native Lock State Backend)](#9-phase-6--pre-pipeline-aws-setup-s3-native-lock-state-backend)
 10. [Phase 7 — Pipeline 1: Infrastructure (`Jenkinsfile.infra`) — Full Walkthrough](#10-phase-7--pipeline-1-infrastructure-jenkinsfileinfra--full-walkthrough)
-11. [Phase 8 — Post-Infrastructure: Install ALB Controller & ArgoCD](#11-phase-8--post-infrastructure-install-alb-controller--argocd)
-12. [Phase 9 — Pipeline 2: Application (`Jenkinsfile`) — Full Walkthrough](#12-phase-9--pipeline-2-application-jenkinsfile--full-walkthrough)
-13. [Phase 10 — GitHub Webhook Setup (Auto-Trigger)](#13-phase-10--github-webhook-setup-auto-trigger)
-14. [Phase 11 — Monitoring Setup (Prometheus + Grafana)](#14-phase-11--monitoring-setup-prometheus--grafana)
-15. [How to Run Each Pipeline — Quick Reference](#15-how-to-run-each-pipeline--quick-reference)
-16. [Pipeline File Code Walkthrough — Line by Line](#16-pipeline-file-code-walkthrough--line-by-line)
-17. [Troubleshooting Guide](#17-troubleshooting-guide)
-18. [Complete Command Cheat Sheet](#18-complete-command-cheat-sheet)
+11. [Phase 8 — Pipeline 2: Application Delivery (`Jenkinsfile`) — Full Walkthrough](#11-phase-8--pipeline-2-application-delivery-jenkinsfile--full-walkthrough)
+12. [Phase 9 — Pipeline 3: Infrastructure Teardown (`Jenkinsfile.infra.delete`)](#12-phase-9--pipeline-3-infrastructure-teardown-jenkinsfileinfradelete)
+13. [Phase 10 — Monitoring & ArgoCD Setup](#13-phase-10--monitoring--argocd-setup)
+14. [How to Run Each Pipeline — Quick Reference](#14-how-to-run-each-pipeline--quick-reference)
+15. [Troubleshooting Guide](#15-troubleshooting-guide)
 
 ---
 
-## 1. Architecture Overview — Two Pipelines
+## 1. Architecture Overview — Three Pipelines
 
-This project has **two separate Jenkinsfiles** for two different purposes:
+This project uses **three specialized Jenkins pipelines**:
 
 | File | Job Name | Purpose | Stages | When to Run | Trigger |
 |---|---|---|---|---|---|
-| `Jenkinsfile.infra` | `dcmusic-infra` | Create/update AWS infrastructure (VPC, EKS, RDS, ECR, IAM) using Terraform | **6 stages** | First time + when infra changes needed | **Manual only** (has approval gate) |
-| `Jenkinsfile` | `dcmusic-app` | Build → Test → Docker → Trivy scan → ECR → Deploy to EKS → Verify | **10 stages** | Every code change | **Automatic** (webhook) or manual |
+| `Jenkinsfile.infra` | `dcmusic-infra` | Create/update AWS infrastructure (VPC, EKS 1.35 on AL2023, RDS, ECR, IAM) using Terraform | **8 stages** | First time + when infra changes needed | **Manual only** (interactive approval gate) |
+| `Jenkinsfile` | `dcmusic-app` | Build → Test → Docker → Trivy scan → ECR → Dynamic RDS Fetch → Helm Deploy to EKS → Verify | **10 stages** | Every code change | **Automatic** (GitHub Webhook) or manual |
+| `Jenkinsfile.infra.delete` | `dcmusic-infra-delete` | Safely teardown all AWS infrastructure resources using Terraform destroy | **5 stages** | When decommissioning cluster | **Manual only** (requires typing cluster name to confirm) |
 
-### Why Two Pipelines?
+### Execution Sequence
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                      EXECUTION ORDER                                │
-│                                                                     │
-│   ┌── PHASE A: ONE-TIME SETUP ──────────────────────────────────┐  │
-│   │                                                              │  │
-│   │  1. Jenkinsfile.infra (RUN FIRST — MANUAL)                  │  │
-│   │     ├─ Creates: VPC → Security Groups → ECR → IAM → EKS → RDS│  │
-│   │     ├─ Has: Manual Approval Gate ⏸️ (review before apply)   │  │
-│   │     ├─ Takes: ~15-20 minutes                                │  │
-│   │     └─ Cost: EKS ~$73/mo + NAT ~$32/mo + RDS (free tier)   │  │
-│   │                                                              │  │
-│   │  2. Post-Infra Setup (MANUAL — local commands)              │  │
-│   │     ├─ Install AWS Load Balancer Controller                 │  │
-│   │     ├─ Install ArgoCD (optional)                            │  │
-│   │     └─ Install Prometheus + Grafana (optional)              │  │
-│   └──────────────────────────────────────────────────────────────┘  │
-│                            ↓                                        │
-│   ┌── PHASE B: EVERY CODE CHANGE ───────────────────────────────┐  │
-│   │                                                              │  │
-│   │  3. Jenkinsfile (RUNS ON EVERY PUSH — AUTOMATIC)            │  │
-│   │     ├─ Checkout → AWS Setup → Tests → Build                 │  │
-│   │     ├─ Docker Build → Trivy Scan → Push ECR                 │  │
-│   │     ├─ Update Manifests → Helm Deploy → Verify              │  │
-│   │     ├─ Takes: ~5-8 minutes                                  │  │
-│   │     └─ Zero-downtime rolling update                         │  │
-│   └──────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                        INFRASTRUCTURE & DEPLOY LIFECYCLE               │
+│                                                                        │
+│   ┌── PHASE A: INFRASTRUCTURE PROVISIONING ────────────────────────┐   │
+│   │                                                                │   │
+│   │  1. Jenkinsfile.infra (MANUAL)                                │   │
+│   │     ├─ Creates: VPC → Security Groups → ECR → IAM → EKS 1.35 → RDS│
+│   │     ├─ Terraform Backend: S3 with native lockfile (no DynamoDB)│   │
+│   │     ├─ Has: Manual Approval Gate ⏸️                             │   │
+│   │     └─ Cluster OS: Amazon Linux 2023 (AL2023_x86_64_STANDARD)  │   │
+│   └────────────────────────────────────────────────────────────────┘   │
+│                               ↓                                        │
+│   ┌── PHASE B: EVERY APPLICATION CODE CHANGE ──────────────────────┐   │
+│   │                                                                │   │
+│   │  2. Jenkinsfile (AUTOMATIC / ON-PUSH)                          │   │
+│   │     ├─ Checkout → AWS ECR Login → Maven / Vite Tests & Build   │   │
+│   │     ├─ Docker Build → Trivy Security Vulnerability Scan        │   │
+│   │     ├─ Push Images to AWS ECR                                  │   │
+│   │     ├─ Dynamic AWS RDS Endpoint Discovery                      │   │
+│   │     ├─ Helm Deploy (exposing Frontend & Backend via LoadBalancer)│ 
+│   │     └─ Pod Rollout Status Verification & Auto-Diagnostics      │   │
+│   └────────────────────────────────────────────────────────────────┘   │
+│                               ↓                                        │
+│   ┌── PHASE C: TEARDOWN / CLEANUP ─────────────────────────────────┐   │
+│   │                                                                │   │
+│   │  3. Jenkinsfile.infra.delete (MANUAL ONLY)                     │   │
+│   │     ├─ Interactive verification: Enter cluster name            │   │
+│   │     ├─ Runs: terraform destroy                                 │   │
+│   │     └─ Cleans up EKS, RDS, ECR, NAT Gateway, Subnets, VPC      │   │
+│   └────────────────────────────────────────────────────────────────┘   │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Key Design Decisions in Our Jenkinsfiles
@@ -202,12 +204,13 @@ Before starting, verify you have **ALL** of these:
 
 | Item | Specific Value Used in Code |
 |---|---|
-| AWS Region | `ap-south-1` (Mumbai) — hardcoded in both Jenkinsfiles |
+| AWS Region | `ap-south-1` (Mumbai) — configured in Terraform and Jenkinsfiles |
 | Project Name | `dcmusic` — used for ECR repos, namespaces, Helm release |
 | EKS Cluster Name | `dcmusic-eks` — referenced in kubeconfig commands |
-| RDS Instance | `db.t3.micro` (Free Tier) |
+| RDS Instance | `db.t3.micro` (Free Tier, 1-day backup retention) |
 | EKS Node Type | `t3.small` (2 vCPU, 2GB RAM — minimum for EKS) |
-| Kubernetes Version | `1.29` |
+| Kubernetes Version | `1.35` |
+| Node OS / AMI | `AL2023_x86_64_STANDARD` (Amazon Linux 2023) |
 
 > ⚠️ **COST WARNING**: EKS is NOT free tier. Expected costs:
 > - EKS control plane: ~$73/month
@@ -596,73 +599,52 @@ sudo -u jenkins bash -c '
 
 ---
 
-## 9. Phase 6 — Pre-Pipeline AWS Setup (S3 + DynamoDB for Terraform State)
+## 9. Phase 6 — Pre-Pipeline AWS Setup (S3 Native Lock State Backend)
 
-> ⚠️ This must be done BEFORE running `Jenkinsfile.infra`. The infra pipeline's `terraform init` expects these to exist.
+> ⚠️ This must be done BEFORE running `Jenkinsfile.infra`. The infra pipeline's `terraform init` expects the S3 state bucket to exist.
 
-### Why?
+### Modern S3 State Locking (Terraform >= 1.10)
+Terraform 1.10+ supports native S3 object locking using `.tflock` files (`use_lockfile = true`), completely eliminating the need for an external DynamoDB table.
 
-Our `terraform/provider.tf` configures a **remote S3 backend**:
+Our `terraform/provider.tf` configures a **partial remote S3 backend**:
 ```hcl
-backend "s3" {
-  bucket         = "dcmusic-tf-state-bucket"   # S3 bucket for state
-  key            = "dev/terraform.tfstate"      # Path inside bucket
-  region         = "ap-south-1"
-  dynamodb_table = "dcmusic-tf-lock"            # DynamoDB for locking
-  encrypt        = true
+terraform {
+  required_version = ">= 1.5.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+
+  backend "s3" {
+    # Dynamic values passed via Jenkinsfile.infra / setup-remote-state.sh
+  }
 }
 ```
 
-The `Jenkinsfile.infra` overrides the bucket name dynamically with your Account ID:
+The `Jenkinsfile.infra` overrides the backend configuration dynamically with your Account ID and enables native locking:
 ```groovy
-terraform init \
-  -backend-config="bucket=dcmusic-tf-state-${env.AWS_ACCOUNT_ID}" \
-  -backend-config="key=dev/terraform.tfstate" \
-  ...
+echo "yes" | terraform init \
+  -backend-config="bucket=dcmusic-tf-state-${AWS_ACCOUNT_ID}" \
+  -backend-config="key=prod/terraform.tfstate" \
+  -backend-config="region=${AWS_REGION}" \
+  -backend-config="use_lockfile=true"
 ```
 
-### Step 1: Get Your AWS Account ID
+### Automated Setup Using Script
+We provide a unified script [terraform/setup-remote-state.sh](file:///home/dc/Desktop/Prod_DevOps/terraform/setup-remote-state.sh):
 
 ```bash
-aws sts get-caller-identity --query Account --output text
-# Output: 123456789012 (your 12-digit account ID)
+cd terraform
+chmod +x setup-remote-state.sh
+./setup-remote-state.sh
 ```
 
-### Step 2: Create S3 Bucket for Terraform State
-
-```bash
-# Replace with your actual account ID
-AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
-# Create the S3 bucket
-aws s3 mb s3://dcmusic-tf-state-${AWS_ACCOUNT_ID} --region ap-south-1
-
-# Enable versioning (so you can recover previous state versions)
-aws s3api put-bucket-versioning \
-  --bucket dcmusic-tf-state-${AWS_ACCOUNT_ID} \
-  --versioning-configuration Status=Enabled
-
-# Verify
-aws s3 ls | grep dcmusic
-# Expected: 2024-xx-xx xx:xx:xx dcmusic-tf-state-123456789012
-```
-
-### Step 3: Create DynamoDB Table for State Locking
-
-```bash
-aws dynamodb create-table \
-  --table-name dcmusic-tf-lock \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --region ap-south-1
-
-# Verify
-aws dynamodb describe-table --table-name dcmusic-tf-lock --query 'Table.TableStatus'
-# Expected: "ACTIVE"
-```
-
-### Step 4: Push Your Code to GitHub
+What the script does:
+1. Detects your AWS Account ID via `aws sts get-caller-identity`.
+2. Creates the S3 bucket `dcmusic-tf-state-<ACCOUNT_ID>` with versioning, server-side encryption (AES256), and public access blocks.
+3. Automatically runs `terraform init` with `use_lockfile=true`.
 
 ```bash
 cd /home/dc/Desktop/Prod_DevOps
@@ -761,10 +743,9 @@ Click **"Save"**
 ║  2. Initializes Terraform with dynamic backend:                 ║
 ║     terraform init \                                            ║
 ║       -backend-config="bucket=dcmusic-tf-state-123456789012" \  ║
-║       -backend-config="key=dev/terraform.tfstate" \             ║
+║       -backend-config="key=prod/terraform.tfstate" \            ║
 ║       -backend-config="region=ap-south-1" \                     ║
-║       -backend-config="dynamodb_table=dcmusic-tf-lock" \        ║
-║       -backend-config="encrypt=true"                            ║
+║       -backend-config="use_lockfile=true"                       ║
 ║                                                                  ║
 ║  Console Output:                                                ║
 ║  > Initializing modules...                                      ║
@@ -930,39 +911,26 @@ terraform output
 
 ---
 
-## 11. Phase 8 — Post-Infrastructure: Install ALB Controller & ArgoCD
+## 11. Phase 8 — Post-Infrastructure: Services & Ingress Access
 
-> ⚠️ These steps must be done AFTER the infra pipeline succeeds but BEFORE running the app pipeline.
+In our current architecture, both **Frontend** and **Backend** microservices, as well as **Grafana** and **ArgoCD**, are exposed directly using native Kubernetes `type: LoadBalancer` (backed by AWS Network / Classic Load Balancers).
 
-### 11.1 — Install AWS Load Balancer Controller (REQUIRED)
-
-The app pipeline deploys an ALB Ingress — the ALB controller must be running in the cluster to create the actual ALB.
+### Why Direct LoadBalancers?
+- **No ingress controller overhead:** Eliminates the complexity and prerequisite failures of installing cert-manager and AWS Load Balancer Controller before pods can be accessed.
+- **Immediate availability:** AWS automatically provisions dedicated external DNS endpoints for each service.
 
 ```bash
-# Step 1: Install cert-manager (dependency for ALB controller)
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
-kubectl wait --for=condition=available deployment/cert-manager -n cert-manager --timeout=120s
+# Check LoadBalancer endpoints for the application:
+kubectl get svc -n dcmusic
 
-# Step 2: Get role ARN from Terraform outputs
-cd /home/dc/Desktop/Prod_DevOps/terraform
-LB_ROLE_ARN=$(terraform output -raw eks_lb_controller_role_arn)
-VPC_ID=$(terraform output -raw vpc_id)
+# Check LoadBalancer endpoint for Grafana:
+kubectl get svc prometheus-grafana -n monitoring
 
-echo "LB Role ARN: $LB_ROLE_ARN"
-echo "VPC ID: $VPC_ID"
+# Check LoadBalancer endpoint for ArgoCD:
+kubectl get svc argocd-server -n argocd
+```
 
-# Step 3: Add EKS Helm chart repo
-helm repo add eks https://aws.github.io/eks-charts
-helm repo update
-
-# Step 4: Install the ALB controller
-helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
-  -n kube-system \
-  --set clusterName=dcmusic-eks \
-  --set serviceAccount.create=true \
-  --set serviceAccount.name=aws-load-balancer-controller \
-  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$LB_ROLE_ARN" \
-  --set region=ap-south-1 \
+*(Note: For complete setup steps on Monitoring and ArgoCD, refer directly to [Documentation/MONITORING_AND_ARGOCD_SETUP.md](file:///home/dc/Desktop/Prod_DevOps/Documentation/MONITORING_AND_ARGOCD_SETUP.md).)*
   --set vpcId=$VPC_ID
 
 # Step 5: Verify ALB controller is running
