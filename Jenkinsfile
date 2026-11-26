@@ -57,6 +57,7 @@ pipeline {
         AWS_REGION       = 'ap-south-1'
         PROJECT_NAME     = 'dcmusic'
         EKS_CLUSTER_NAME = 'dcmusic-eks'
+        ENVIRONMENT      = 'dev'
     }
 
     // ---------------------------------------------------------
@@ -327,6 +328,13 @@ pipeline {
                     sh "aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_REGION}"
 
                     script {
+                        def rdsHost = sh(
+                            script: "aws rds describe-db-instances --db-instance-identifier ${PROJECT_NAME}-${ENVIRONMENT}-mysql --region ${AWS_REGION} --query 'DBInstances[0].Endpoint.Address' --output text 2>/dev/null || echo ''",
+                            returnStdout: true
+                        ).trim()
+
+                        echo "📡 Connecting to RDS Host: ${rdsHost}"
+
                         // Try Helm upgrade first; fall back to kubectl if Helm chart not found
                         def helmResult = sh(
                             script: """
@@ -337,7 +345,9 @@ pipeline {
                                     --set backend.image.tag=${env.BUILD_NUMBER} \\
                                     --set frontend.image.repository=${env.ECR_FRONTEND} \\
                                     --set frontend.image.tag=${env.BUILD_NUMBER} \\
-                                    --set backend.env.DB_PASSWORD=${DB_PASSWORD} \\
+                                    --set backend.secret.SPRING_DATASOURCE_URL="jdbc:mysql://${rdsHost}:3306/dcmusic_db" \\
+                                    --set backend.secret.SPRING_DATASOURCE_USERNAME="admin" \\
+                                    --set backend.secret.SPRING_DATASOURCE_PASSWORD="${DB_PASSWORD}" \\
                                     --wait --timeout 300s
                             """,
                             returnStatus: true
@@ -408,7 +418,12 @@ pipeline {
             """
         }
         failure {
-            echo '❌ Pipeline failed! Check the logs above for details.'
+            echo '❌ Pipeline failed! Fetching Kubernetes pod diagnostics...'
+            sh """
+                kubectl get pods -n ${PROJECT_NAME} -o wide || true
+                kubectl describe pods -n ${PROJECT_NAME} || true
+                kubectl logs -n ${PROJECT_NAME} -l app.kubernetes.io/component=backend --tail=50 || true
+            """
         }
         always {
             // Clean up Docker images from Jenkins server to save disk space

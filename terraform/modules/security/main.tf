@@ -75,13 +75,14 @@ resource "aws_security_group" "rds" {
     security_groups = [aws_security_group.ec2.id]
   }
 
-  # MySQL access from EKS nodes
+  # MySQL access from EKS nodes and VPC CIDR
   ingress {
     description     = "MySQL from EKS nodes"
     from_port       = 3306
     to_port         = 3306
     protocol        = "tcp"
     security_groups = [aws_security_group.eks_nodes.id]
+    cidr_blocks     = [var.vpc_cidr]
   }
 
   egress {
