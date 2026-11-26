@@ -111,8 +111,9 @@ module "rds" {
   db_name           = var.db_name
   db_username       = var.db_username
   db_password       = var.db_password
-  subnet_ids        = module.vpc.private_subnet_ids
-  security_group_id = module.security.rds_security_group_id
+  subnet_ids              = module.vpc.private_subnet_ids
+  security_group_id       = module.security.rds_security_group_id
+  backup_retention_period = var.backup_retention_period
 }
 
 # -----------------------------------------------------------

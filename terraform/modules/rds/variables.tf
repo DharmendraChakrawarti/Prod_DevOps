@@ -34,3 +34,9 @@ variable "security_group_id" {
   description = "Security group ID for RDS"
   type        = string
 }
+
+variable "backup_retention_period" {
+  description = "Backup retention period in days (Free Tier max is 1 day)"
+  type        = number
+  default     = 1
+}

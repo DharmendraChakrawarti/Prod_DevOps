@@ -133,3 +133,9 @@ variable "db_password" {
   type        = string
   sensitive   = true
 }
+
+variable "backup_retention_period" {
+  description = "The days to retain backups for RDS (Free Tier max is 1 day)"
+  type        = number
+  default     = 1
+}

@@ -51,8 +51,8 @@ resource "aws_db_instance" "main" {
   publicly_accessible    = false   # Not accessible from internet (only from EKS/EC2)
 
   # Backup & Maintenance
-  backup_retention_period = 7      # Keep backups for 7 days
-  skip_final_snapshot     = true   # Don't create snapshot when deleting (dev)
+  backup_retention_period = var.backup_retention_period   # Free Tier max is 1 day
+  skip_final_snapshot     = true                          # Don't create snapshot when deleting (dev)
 
   # Other
   multi_az            = false  # Single AZ for dev (save cost)
