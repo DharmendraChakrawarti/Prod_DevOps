@@ -19,7 +19,7 @@ spec:
   project: default
 
   source:
-    repoURL: https://github.com/<your-org>/dcmusic-gitops.git  # TODO: Replace with your actual repo URL
+    repoURL: https://github.com/DharmendraChakrawarti/Prod_DevOps.git
     targetRevision: main
     path: helm/dcmusic
     helm:
