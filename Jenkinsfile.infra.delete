@@ -20,9 +20,8 @@
 //    - ECR repositories + all Docker images
 //    - IAM roles
 //
-//  The S3 state bucket and DynamoDB lock table are
-//  intentionally NOT deleted (they're outside Terraform's
-//  management scope).
+//  The S3 state bucket is intentionally NOT deleted (it's
+//  outside Terraform's management scope).
 //
 //  PREREQUISITES:
 //  -------------------------------------------------
@@ -219,9 +218,8 @@ pipeline {
             ✅  All AWS resources for '${PROJECT_NAME}' in
             ✅  '${ENVIRONMENT}' environment have been deleted.
             ✅
-            ✅  The following are still intact:
+            ✅  The following is still intact:
             ✅    - S3 state bucket (for audit history)
-            ✅    - DynamoDB lock table
             ✅
             ✅  To re-create infrastructure, run the
             ✅  Jenkinsfile.infra pipeline.

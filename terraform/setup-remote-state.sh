@@ -5,8 +5,10 @@
 #  This script automatically:
 #    1. Detects your AWS Account ID dynamically
 #    2. Creates a unique S3 bucket for Terraform state (versioned + encrypted + private)
-#    3. Creates a DynamoDB table for state locking
-#    4. Prints the exact command to initialize Terraform
+#    3. Prints the exact command to initialize Terraform
+#
+#  Locking: Terraform >= 1.10 uses native S3 locking (use_lockfile=true),
+#  so DynamoDB is NOT needed.
 #
 #  Usage:
 #    cd terraform
@@ -27,7 +29,6 @@ ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/nu
 }
 
 BUCKET_NAME="${PROJECT_NAME}-tf-state-${ACCOUNT_ID}"
-DYNAMODB_TABLE="${PROJECT_NAME}-tf-lock"
 
 echo "============================================"
 echo "  Setting up Terraform Remote State Backend"
@@ -35,10 +36,10 @@ echo "============================================"
 echo "  AWS Account:    ${ACCOUNT_ID}"
 echo "  Region:         ${AWS_REGION}"
 echo "  S3 Bucket:      ${BUCKET_NAME}"
-echo "  DynamoDB Table: ${DYNAMODB_TABLE}"
+echo "  Locking:        Native S3 (use_lockfile)"
 echo "============================================"
 
-# --- 1. Create S3 Bucket ---
+# --- Create S3 Bucket ---
 echo ""
 echo "📦 Checking S3 bucket: ${BUCKET_NAME}..."
 if aws s3api head-bucket --bucket "${BUCKET_NAME}" 2>/dev/null; then
@@ -74,28 +75,6 @@ else
         }'
 
     echo "   ✅ S3 bucket created (versioned + encrypted + private)!"
-fi
-
-# --- 2. Create DynamoDB Table ---
-echo ""
-echo "🔒 Checking DynamoDB table: ${DYNAMODB_TABLE}..."
-if aws dynamodb describe-table --table-name "${DYNAMODB_TABLE}" --region "${AWS_REGION}" 2>/dev/null; then
-    echo "   ✅ DynamoDB table already exists, skipping creation."
-else
-    echo "   Creating DynamoDB table..."
-    aws dynamodb create-table \
-        --table-name "${DYNAMODB_TABLE}" \
-        --attribute-definitions AttributeName=LockID,AttributeType=S \
-        --key-schema AttributeName=LockID,KeyType=HASH \
-        --billing-mode PAY_PER_REQUEST \
-        --region "${AWS_REGION}"
-
-    echo "   ⏳ Waiting for DynamoDB table to become active..."
-    aws dynamodb wait table-exists \
-        --table-name "${DYNAMODB_TABLE}" \
-        --region "${AWS_REGION}"
-
-    echo "   ✅ DynamoDB table created successfully!"
 fi
 
 echo ""

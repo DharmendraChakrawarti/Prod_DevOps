@@ -43,9 +43,9 @@ Complete Infrastructure-as-Code setup for the **DCMusic** application on AWS.
      │                  │   ECR: dcmusic-backend / dcmusic-frontend           │
      │                  └─────────────────────────────────────────────────────┘
      │
-     │   ┌──────────────────────────────────┐
-     └──▶│  S3 (TF State) + DynamoDB (Lock) │   ← Remote State (optional)
-          └──────────────────────────────────┘
+     │   ┌──────────────────────────────────────────┐
+     └──▶│  S3 (TF State — Versioned + Encrypted)     │   ← Remote State
+          └──────────────────────────────────────────┘
 ```
 
 **Deployment order** (resolved automatically by Terraform's dependency graph):
@@ -102,7 +102,7 @@ terraform/
 │       ├── outputs.tf
 │       └── user_data.sh
 │
-├── remote-state/                # Bootstrap module for S3 + DynamoDB backend
+├── remote-state/                # Bootstrap module for S3 backend
 │   ├── main.tf
 │   ├── variables.tf
 │   └── outputs.tf
@@ -159,7 +159,7 @@ cp terraform.tfvars.example terraform.tfvars
 ### Step 2 — Create remote state backend & initialize Terraform
 
 ```bash
-# Create S3 bucket + DynamoDB table (one-time, idempotent)
+# Create S3 bucket (one-time, idempotent)
 chmod +x setup-remote-state.sh
 ./setup-remote-state.sh
 
@@ -233,7 +233,7 @@ Checkout → Setup Remote State → Init (S3) → Validate → Plan → Approval
 
 | Stage | What it does |
 |-------|-------------|
-| **Setup Remote State** | Auto-creates S3 bucket + DynamoDB table (idempotent — skips if exists). Locking uses native S3 lockfile. |
+| **Setup Remote State** | Auto-creates S3 bucket (idempotent — skips if exists). Locking uses native S3 lockfile. |
 | **Terraform Init** | Initializes with dynamic `-backend-config` flags (no hardcoded account IDs) |
 | **Terraform Validate** | Catches syntax errors early |
 | **Terraform Plan** | Generates plan; DB password passed via `TF_VAR_db_password` env var (not `-var` flag) |
@@ -260,7 +260,7 @@ Checkout → Init (S3) → Plan Destroy → Approval (type cluster name) → Des
 | **Manual Approval** | Must type `dcmusic-eks` to confirm — prevents accidental destruction |
 | **Terraform Destroy** | Applies the destroy plan — permanently deletes all resources |
 
-> ⚠️ **This deletes EVERYTHING**: EKS cluster, RDS database (all data), VPC, ECR repos, IAM roles. The S3 state bucket and DynamoDB lock table are intentionally preserved for audit history.
+> ⚠️ **This deletes EVERYTHING**: EKS cluster, RDS database (all data), VPC, ECR repos, IAM roles. The S3 state bucket is intentionally preserved for audit history.
 
 **Setup in Jenkins:**
 1. Create a new **Pipeline** job (e.g., `dcmusic-infra-destroy`)
@@ -345,7 +345,7 @@ Both have `force_delete = true` and mutable tags (allows `:latest` overwrites).
 
 Terraform state is stored in **S3** with **native S3 locking** (`use_lockfile = true`). The backend uses a partial configuration (`backend "s3" {}` in `provider.tf`) — actual values are passed at `terraform init` time.
 
-> **Jenkins handles this automatically.** The `Jenkinsfile.infra` pipeline creates the S3 bucket and DynamoDB table in its "Setup Remote State" stage, then passes the config to `terraform init`. You only need the manual steps below for local development.
+> **Jenkins handles this automatically.** The `Jenkinsfile.infra` pipeline creates the S3 bucket in its "Setup Remote State" stage, then passes the config to `terraform init`. You only need the manual steps below for local development.
 
 ### Option A — Shell Script (Recommended for local dev)
 
@@ -358,7 +358,8 @@ chmod +x setup-remote-state.sh
 
 This creates:
 - S3 bucket: `dcmusic-tf-state-<ACCOUNT_ID>` (versioned, encrypted, private)
-- DynamoDB table: `dcmusic-tf-lock` (PAY_PER_REQUEST)
+
+Locking is handled natively by S3 (`use_lockfile = true`) — no DynamoDB needed.
 
 ### Option B — Terraform Module
 
@@ -504,7 +505,7 @@ terraform validate
 terraform state show module.eks.aws_eks_cluster.main
 ```
 
-### Unlock a stuck DynamoDB lock
+### Unlock a stuck state lock
 ```bash
 terraform force-unlock <LOCK_ID>
 ```
@@ -520,7 +521,7 @@ terraform force-unlock <LOCK_ID>
 | NAT Gateway + data | ~$32 |
 | RDS db.t3.micro | Free Tier eligible |
 | ECR (storage) | Negligible |
-| S3 + DynamoDB (state) | < $1 |
+| S3 (state) | < $1 |
 | **Total** | **~$138/mo** |
 
 ### Cost-saving tips
