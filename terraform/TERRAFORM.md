@@ -39,7 +39,7 @@ Complete Infrastructure-as-Code setup for the **DCMusic** application on AWS.
      │                  │  │   Controller)    │    │                      │   │
      │                  │  └──────────────────┘    └──────────────────────┘   │
      │                  │                                                     │
-     │                  │   EKS Cluster (K8s 1.31)                           │
+     │                  │   EKS Cluster (K8s 1.35)                           │
      │                  │   ECR: dcmusic-backend / dcmusic-frontend           │
      │                  └─────────────────────────────────────────────────────┘
      │
@@ -321,8 +321,8 @@ Both have `force_delete = true` and mutable tags (allows `:latest` overwrites).
 
 | Component | Configuration |
 |-----------|--------------|
-| Cluster | K8s 1.31, public + private API access, CloudWatch logs (api, audit, authenticator) |
-| Node Group | 2× t3.small (min 1, max 3), ON_DEMAND, 20 GB disk, Amazon Linux 2, private subnets |
+| Cluster | K8s 1.35, public + private API access, CloudWatch logs (api, audit, authenticator) |
+| Node Group | 2× t3.small (min 1, max 3), ON_DEMAND, 20 GB disk, Amazon Linux 2023 (AL2023), private subnets |
 | Add-ons | VPC CNI, CoreDNS, kube-proxy |
 | OIDC Provider | Enables IRSA (IAM Roles for Service Accounts) |
 | LB Controller Role | IRSA role for `aws-load-balancer-controller` in `kube-system` |
@@ -439,7 +439,7 @@ All variables are defined in `variables.tf` with sensible defaults. Override the
 | `environment` | `dev` | Environment tag (dev/staging/prod) |
 | `vpc_cidr` | `10.0.0.0/16` | VPC CIDR block |
 | `cluster_name` | `dcmusic-eks` | EKS cluster name |
-| `kubernetes_version` | `1.31` | K8s version |
+| `kubernetes_version` | `1.35` | K8s version |
 | `node_instance_types` | `["t3.small"]` | EC2 types for EKS nodes |
 | `node_desired_size` | `2` | Desired node count |
 | `node_min_size` / `node_max_size` | `1` / `3` | Autoscaling bounds |

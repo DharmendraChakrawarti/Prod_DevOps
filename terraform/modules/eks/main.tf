@@ -67,7 +67,7 @@ resource "aws_eks_node_group" "general" {
   instance_types = var.node_instance_types
   capacity_type  = "ON_DEMAND"
   disk_size      = var.node_disk_size
-  ami_type       = "AL2_x86_64" # Amazon Linux 2 EKS-optimized
+  ami_type       = "AL2023_x86_64_STANDARD" # Amazon Linux 2023 EKS-optimized (AL2 deprecated in 1.33+)
 
   update_config {
     max_unavailable = 1 # Roll one node at a time during updates
