@@ -81,11 +81,11 @@ pipeline {
                         echo '🏗️ Initializing Terraform with S3 backend...'
                         sh """
                             ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text)
-                            terraform init \\
+                            echo "yes" | terraform init -input=false \\
                               -backend-config="bucket=${PROJECT_NAME}-tf-state-\${ACCOUNT_ID}" \\
                               -backend-config="key=${ENVIRONMENT}/terraform.tfstate" \\
                               -backend-config="region=${AWS_REGION}" \\
-                              -backend-config="dynamodb_table=${PROJECT_NAME}-tf-lock" \\
+                              -backend-config="use_lockfile=true" \\
                               -backend-config="encrypt=true"
                         """
                         echo '✅ Terraform initialized!'

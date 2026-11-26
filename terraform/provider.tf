@@ -21,12 +21,12 @@ terraform {
   # STATE BACKEND: S3 (Partial Config)
   # -----------------------------------------------------------
   # Uses partial backend configuration. Actual values (bucket,
-  # dynamodb_table, region, key) are passed at 'terraform init'
-  # time via -backend-config flags. This keeps account-specific
-  # values out of committed code.
+  # region, key) are passed at 'terraform init' time via
+  # -backend-config flags. This keeps account-specific values
+  # out of committed code.
   #
   # The Jenkins pipeline (Jenkinsfile.infra) auto-creates the
-  # S3 bucket + DynamoDB table and passes them to terraform init.
+  # S3 bucket and passes config to terraform init.
   #
   # For local dev, run:
   #   ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -34,7 +34,7 @@ terraform {
   #     -backend-config="bucket=dcmusic-tf-state-${ACCOUNT_ID}" \
   #     -backend-config="key=dev/terraform.tfstate" \
   #     -backend-config="region=ap-south-1" \
-  #     -backend-config="dynamodb_table=dcmusic-tf-lock" \
+  #     -backend-config="use_lockfile=true" \
   #     -backend-config="encrypt=true"
   # -----------------------------------------------------------
   backend "s3" {}

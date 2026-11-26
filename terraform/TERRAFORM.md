@@ -170,7 +170,7 @@ terraform init \
   -backend-config="bucket=dcmusic-tf-state-${ACCOUNT_ID}" \
   -backend-config="key=dev/terraform.tfstate" \
   -backend-config="region=ap-south-1" \
-  -backend-config="dynamodb_table=dcmusic-tf-lock" \
+  -backend-config="use_lockfile=true" \
   -backend-config="encrypt=true"
 ```
 
@@ -233,7 +233,7 @@ Checkout → Setup Remote State → Init (S3) → Validate → Plan → Approval
 
 | Stage | What it does |
 |-------|-------------|
-| **Setup Remote State** | Auto-creates S3 bucket + DynamoDB table (idempotent — skips if exists) |
+| **Setup Remote State** | Auto-creates S3 bucket + DynamoDB table (idempotent — skips if exists). Locking uses native S3 lockfile. |
 | **Terraform Init** | Initializes with dynamic `-backend-config` flags (no hardcoded account IDs) |
 | **Terraform Validate** | Catches syntax errors early |
 | **Terraform Plan** | Generates plan; DB password passed via `TF_VAR_db_password` env var (not `-var` flag) |
@@ -343,7 +343,7 @@ Both have `force_delete = true` and mutable tags (allows `:latest` overwrites).
 
 ## Remote State Setup
 
-Terraform state is stored in **S3** with **DynamoDB locking**. The backend uses a partial configuration (`backend "s3" {}` in `provider.tf`) — actual values are passed at `terraform init` time.
+Terraform state is stored in **S3** with **native S3 locking** (`use_lockfile = true`). The backend uses a partial configuration (`backend "s3" {}` in `provider.tf`) — actual values are passed at `terraform init` time.
 
 > **Jenkins handles this automatically.** The `Jenkinsfile.infra` pipeline creates the S3 bucket and DynamoDB table in its "Setup Remote State" stage, then passes the config to `terraform init`. You only need the manual steps below for local development.
 
@@ -376,11 +376,11 @@ terraform apply
 
 ```hcl
 backend "s3" {
-  bucket         = "dcmusic-tf-state-<YOUR_ACCOUNT_ID>"
-  key            = "dev/terraform.tfstate"
-  region         = "ap-south-1"
-  dynamodb_table = "dcmusic-tf-lock"
-  encrypt        = true
+  bucket       = "dcmusic-tf-state-<YOUR_ACCOUNT_ID>"
+  key          = "dev/terraform.tfstate"
+  region       = "ap-south-1"
+  use_lockfile = true
+  encrypt      = true
 }
 ```
 
@@ -421,7 +421,7 @@ terraform init \
   -backend-config="bucket=dcmusic-tf-state-${ACCOUNT_ID}" \
   -backend-config="key=dev/terraform.tfstate" \
   -backend-config="region=ap-south-1" \
-  -backend-config="dynamodb_table=dcmusic-tf-lock" \
+  -backend-config="use_lockfile=true" \
   -backend-config="encrypt=true"
 ```
 
@@ -552,7 +552,7 @@ terraform init -reconfigure
 ```
 
 ### State lock stuck / `Error: Error locking state`
-If a previous `apply` crashed and left the DynamoDB lock:
+If a previous `apply` crashed and left the state lock:
 ```bash
 # The error message contains the Lock ID
 terraform force-unlock <LOCK_ID_FROM_ERROR>

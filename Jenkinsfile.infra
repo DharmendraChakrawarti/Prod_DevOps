@@ -5,7 +5,7 @@
 //  WHAT THIS PIPELINE DOES (8 stages):
 //  ------------------------------------
 //  1. Checkout              → Pulls code from GitHub
-//  2. Setup Remote State    → Creates S3 bucket + DynamoDB lock table (idempotent)
+//  2. Setup Remote State    → Creates S3 bucket for state storage (idempotent)
 //  3. Terraform Init        → Initializes Terraform with S3 backend
 //  4. Terraform Validate    → Validates syntax and configuration
 //  5. Terraform Plan        → Creates an execution plan (saved to file)
@@ -65,7 +65,7 @@ pipeline {
         // STAGE 2: SETUP REMOTE STATE BACKEND
         // =====================================================
         // Runs the idempotent setup-remote-state.sh script to
-        // ensure S3 bucket + DynamoDB table exist before init.
+        // ensure S3 bucket exists before init.
         // Single source of truth for remote state creation.
         // =====================================================
         stage('Setup Remote State') {
@@ -103,11 +103,11 @@ pipeline {
                         echo '🏗️ Initializing Terraform with S3 backend...'
                         sh """
                             ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text)
-                            terraform init \\
+                            echo "yes" | terraform init -input=false \\
                               -backend-config="bucket=${PROJECT_NAME}-tf-state-\${ACCOUNT_ID}" \\
                               -backend-config="key=${ENVIRONMENT}/terraform.tfstate" \\
                               -backend-config="region=${AWS_REGION}" \\
-                              -backend-config="dynamodb_table=${PROJECT_NAME}-tf-lock" \\
+                              -backend-config="use_lockfile=true" \\
                               -backend-config="encrypt=true"
                         """
                         echo '✅ Terraform initialized with S3 remote state!'
