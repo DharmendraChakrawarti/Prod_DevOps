@@ -23,7 +23,7 @@ backend:
     pullPolicy: IfNotPresent
 
   service:
-    type: ClusterIP
+    type: LoadBalancer
     port: 8080
 
   resources:
@@ -94,7 +94,7 @@ frontend:
     pullPolicy: IfNotPresent
 
   service:
-    type: ClusterIP
+    type: LoadBalancer
     port: 80
 
   resources:

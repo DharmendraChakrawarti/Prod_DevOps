@@ -348,6 +348,8 @@ pipeline {
                                     --set backend.secret.SPRING_DATASOURCE_URL="jdbc:mysql://${rdsHost}:3306/dcmusic_db" \\
                                     --set backend.secret.SPRING_DATASOURCE_USERNAME="admin" \\
                                     --set backend.secret.SPRING_DATASOURCE_PASSWORD="${DB_PASSWORD}" \\
+                                    --set frontend.service.type=LoadBalancer \\
+                                    --set backend.service.type=LoadBalancer \\
                                     --wait --timeout 300s
                             """,
                             returnStatus: true
