@@ -64,11 +64,14 @@ Prod_DevOps/
 │   └── grafana/
 │       └── app-dashboard.json   ← Custom DC Music dashboard
 │
-├── Jenkinsfile                  ← CI/CD Pipeline (10 stages, EKS)
-├── Jenkinsfile.infra            ← Infrastructure Pipeline (Terraform)
-├── Makefile                     ← 15 developer shortcut commands
-├── docker-compose.yml           ← Local development
-└── PROJECT_FLOW.md              ← ⬅ THIS FILE
+├── Documentation/               ← Project documentation
+│   ├── README.md                ← Documentation Index
+│   ├── MONITORING_AND_ARGOCD_SETUP.md ← Prometheus, Grafana, ArgoCD setup
+│   ├── TERRAFORM_SETUP.md       ← EKS K8s 1.35 & Terraform docs
+│   ├── PROJECT_FLOW.md          ← ⬅ THIS FILE
+│   ├── project_implementation.md← K8s, Docker & Helm implementation
+│   ├── jenkins_implementation.md← Jenkins pipeline documentation
+│   └── manual_guide.md          ← Manual operations guide
 ```
 
 ---
@@ -463,4 +466,4 @@ Step 10 → Push code → watch it auto-deploy! 🎉
 
 ---
 
-*For detailed step-by-step commands, see the [Implementation Guide](../../../.gemini/antigravity/brain/e2de5541-ba7d-483e-a928-7394fc0beabf/implementation-guide.md)*
+*For detailed step-by-step commands, see [project_implementation.md](file:///home/dc/Desktop/Prod_DevOps/Documentation/project_implementation.md)*

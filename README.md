@@ -55,56 +55,62 @@ The entire application is 100% Dockerized for zero-configuration, one-command st
 
 ---
 
-## ☁️ Cloud & Production Infrastructure (AWS)
-This directory includes a complete `terraform/` folder configured to deploy the application into **Amazon Web Services (AWS)** seamlessly.
+## ☁️ Cloud & Production Infrastructure (AWS EKS)
+This repository includes a production-grade AWS infrastructure managed via Terraform, targeting Kubernetes 1.35 on Amazon Linux 2023 (`AL2023_x86_64_STANDARD`).
 
-👉 **[Read the complete Infrastructure Overview in `infra.md`](infra.md)** for a detailed dive into the VPC, Security Groups, ECR, RDS, and EC2 topology.
+👉 **[Read the complete Documentation Directory in Documentation/README.md](Documentation/README.md)** for detailed setup, infrastructure, and deployment guides:
+- **[Terraform Setup Guide](Documentation/TERRAFORM_SETUP.md)**: VPC, EKS 1.35, RDS MySQL, ECR, IAM, S3 native lock remote state.
+- **[Monitoring & ArgoCD Guide](Documentation/MONITORING_AND_ARGOCD_SETUP.md)**: Prometheus, Grafana, Alertmanager, and ArgoCD setup.
+- **[Project Flow Guide](Documentation/PROJECT_FLOW.md)**: End-to-end architecture, network topology, and sequence diagrams.
+- **[Jenkins Implementation](Documentation/jenkins_implementation.md)**: CI/CD pipelines for infra (`Jenkinsfile.infra`), teardown (`Jenkinsfile.infra.delete`), and application deploy (`Jenkinsfile`).
 
 ### Provisioned AWS Resources
-- **VPC & Subnets:** Custom public and private networks ensuring secure access points.
-- **RDS MySQL 8.0:** A persistent, highly-available managed database in private subnets.
-- **EC2 Instance:** The central web-server hosting our Docker containers in public subnets.
-- **IAM Roles & ECR:** Secure Elastic Container Registries allowing EC2 to pull our latest pushed images automatically securely via IAM instances.
+- **VPC & Subnets:** Custom public and private networks with NAT Gateways.
+- **EKS Cluster (v1.35):** Managed node group with AL2023 nodes for container orchestration.
+- **RDS MySQL 8.0:** Managed database in private subnets with automated backups.
+- **ECR Repositories:** Private Elastic Container Registries for backend and frontend images.
+- **Load Balancers:** AWS LoadBalancers for external traffic routing to services, Grafana, and ArgoCD.
 
 ---
 
 ## 📂 Project Structure Overview
 - `/frontend`: React + Vite UI application.
 - `/backend`: Spring Boot 3 Java API handling logic, JWT Auth, and Audio Uploads.
-- `/terraform`: Terraform AWS provision modules (`vpc`, `security`, `ecr`, `rds`, `ec2`).
-- `docker-compose.yml`: For booting up both frontend & backend servers.
-- `Jenkinsfile`: Entire CI/CD orchestration pipeline pipeline.
-- `infra.md`: Deep dive into infrastructure architecture.
-- `api-docs.md`: Details about the backend REST endpoints.
-- `jenkinsinfo.md`: Complete overview of the Jenkins deployment and EC2 configuration points.
+- `/terraform`: Terraform AWS provision modules (`vpc`, `security`, `ecr`, `rds`, `eks`, `iam`).
+- `/helm`: Helm charts for DC Music microservices (`helm/dcmusic`).
+- `/monitoring`: Monitoring configs (Prometheus, Grafana dashboard, Alertmanager).
+- `/gitops`: ArgoCD manifests and installer (`gitops/apps`, `gitops/argocd`).
+- `/Documentation`: All architecture, setup, and runbook documentation.
+- `Jenkinsfile`: Application CI/CD pipeline (Test, Build, Scan, Helm Deploy to EKS).
+- `Jenkinsfile.infra`: Infrastructure provisioning pipeline.
+- `Jenkinsfile.infra.delete`: Infrastructure teardown pipeline.
 
 ### Deploying Infrastructure
 1. Move to the Terraform directory:
    ```bash
    cd terraform
    ```
-2. Initialize remote state backend (S3 + DynamoDB):
+2. Initialize remote state backend (S3 with native lockfile):
    ```bash
    chmod +x setup-remote-state.sh
    ./setup-remote-state.sh
    ```
 3. Run the Terraform deploy command:
    ```bash
-   terraform init
+   echo "yes" | terraform init \
+     -backend-config="bucket=dcmusic-tf-state-<ACCOUNT_ID>" \
+     -backend-config="key=prod/terraform.tfstate" \
+     -backend-config="region=ap-south-1" \
+     -backend-config="use_lockfile=true"
    terraform apply
    ```
 
-*(You will be prompted to pass an RDS Master password securely through the console.)*
+*(You will be prompted to pass an RDS Master password securely through the console or via `TF_VAR_db_password`.)*
 
 ---
 
-## 🔄 CI/CD Pipeline
-A robust `Jenkinsfile` exists at the root of the project to orchestrate a 6-stage Continuous Deployment pipeline:
-
-1. **Checkout:** Pulls the latest code from GitHub.
-2. **Terraform (IaC):** Detects any changes to AWS infrastructure and applies them securely.
-3. **Build:** Compiles the Spring Boot backend JAR and the Vite frontend static dist file.
-4. **Docker:** Packages both the frontend (Node/Nginx) and backend (Maven/Java) into Docker containers and pushes them directly to AWS ECR.
-5. **Deploy to EC2:** SSH connects directly to the EC2 server, updates the local `docker-compose.yml`, pulls the newly deployed images, and restarts the environment cleanly!
-
-*Note: For Jenkins to execute this correctly, ensure your Jenkins credentials (`aws-credentials`, `rds-password`, `ec2-ssh-key`) are registered securely in the master node.*
+## 🔄 CI/CD Pipelines
+Robust Jenkins pipelines orchestrate full lifecycle management:
+1. **`Jenkinsfile.infra`**: 8-stage pipeline to validate, plan, and apply Terraform infrastructure.
+2. **`Jenkinsfile`**: Application delivery pipeline building Docker images, scanning with Trivy, pushing to ECR, and deploying via Helm to EKS.
+3. **`Jenkinsfile.infra.delete`**: Safe teardown pipeline with interactive confirmation.
