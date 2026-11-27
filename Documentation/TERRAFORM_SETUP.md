@@ -322,6 +322,7 @@ Both have `force_delete = true` and mutable tags (allows `:latest` overwrites).
 | Component | Configuration |
 |-----------|--------------|
 | Cluster | K8s 1.35, public + private API access, CloudWatch logs (api, audit, authenticator) |
+| Access Config | `API_AND_CONFIG_MAP` authentication mode with `bootstrap_cluster_creator_admin_permissions = true` |
 | Node Group | 2× t3.small (min 1, max 3), ON_DEMAND, 20 GB disk, Amazon Linux 2023 (AL2023), private subnets |
 | Add-ons | VPC CNI, CoreDNS, kube-proxy |
 | OIDC Provider | Enables IRSA (IAM Roles for Service Accounts) |
@@ -335,7 +336,7 @@ Both have `force_delete = true` and mutable tags (allows `:latest` overwrites).
 | Instance | db.t3.micro (Free Tier) |
 | Storage | 20 GB gp2, encrypted (AES-256) |
 | Network | Private subnets only, not publicly accessible |
-| Backups | 7-day retention |
+| Backups | 1-day retention (AWS Free Tier limit) |
 | Multi-AZ | Disabled (dev) |
 | Deletion Protection | Disabled (dev) |
 

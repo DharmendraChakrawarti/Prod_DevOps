@@ -1052,12 +1052,13 @@ Click **"Save"**
 ╠══════════════════════════════════════════════════════════════════╣
 ║  🐳 Builds Docker images using multi-stage Dockerfiles.         ║
 ║                                                                  ║
-║  Commands:                                                      ║
-║  cd backend                                                     ║
-║  docker build -t <ECR_BACKEND>:7 -t <ECR_BACKEND>:latest .     ║
+║  Backend build:                                                  ║
+║  docker build -t <ECR_BACKEND>:${BUILD_NUMBER} -t <ECR_BACKEND>:latest .
 ║                                                                  ║
-║  cd frontend                                                    ║
-║  docker build -t <ECR_FRONTEND>:7 -t <ECR_FRONTEND>:latest .   ║
+║  Frontend build (Dynamic Backend Injection):                     ║
+║  Queries backend LoadBalancer IP/hostname via:                   ║
+║  BACKEND_URL=$(kubectl get svc dcmusic-backend -n dcmusic ...)   ║
+║  docker build --build-arg VITE_API_BASE_URL="http://${BACKEND_URL}:8080/api"
 ║                                                                  ║
 ║  TWO TAGS per image:                                            ║
 ║  • BUILD_NUMBER (e.g., "7") → for traceability / rollback      ║
