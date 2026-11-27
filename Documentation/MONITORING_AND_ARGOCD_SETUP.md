@@ -91,10 +91,23 @@ aws --version
 git --version
 ```
 
-### 2.3 Pull Latest Repository Code
+### 2.3 Clone or Pull Latest Repository Code
+
+On your **EC2 Jumper / Bastion Host**:
+
 ```bash
-cd ~/Prod_DevOps    # Or path to your repo clone
+# If you are setting up the Jumper for the first time (Clone):
+git clone https://github.com/DharmendraChakrawarti/Prod_DevOps.git
+cd Prod_DevOps
+
+# If the repository is already cloned (Pull latest updates):
+cd ~/Prod_DevOps    # Or path to your repo directory
+git fetch origin
+git checkout main
 git pull origin main
+
+# Confirm you are on the latest commit:
+git log -n 1 --oneline
 ```
 
 ---
