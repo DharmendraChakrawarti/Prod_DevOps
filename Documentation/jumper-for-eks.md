@@ -161,8 +161,85 @@ echo "✅ Jumper host initialization complete!"
 
 ---
 
+## 🌐 Alternative: Launching the Jumper in ANOTHER AWS Account (Cross-Account Setup)
+
+If you want to run the Jumper host in a completely separate AWS Account (e.g. Account B) to control the EKS cluster in the primary project account (Account A: `328159054985`), follow this section.
+
+Because our EKS cluster has **Public API Access Enabled** (`endpoint_public_access = true`) and modern **API Access Entries** (`authentication_mode = "API_AND_CONFIG_MAP"`), no VPC peering or complex transit gateways are required.
+
+```
+┌──────────────────────────────────────────────┐        ┌──────────────────────────────────────────────┐
+│ AWS ACCOUNT B (Management / Jumper Account)  │        │ AWS ACCOUNT A (328159054985 - EKS Project)   │
+│                                              │        │                                              │
+│   Default VPC / Public Subnet                │        │   dcmusic-dev-vpc (10.0.0.0/16)              │
+│   ┌──────────────────────────────────────┐   │        │   ┌──────────────────────────────────────┐   │
+│   │  EC2 Jumper Host                     │   │ HTTPS  │   │  EKS Cluster: dcmusic-eks            │   │
+│   │  • aws cli, kubectl, helm, git       │───┼────────┼──▶│  • Public API Endpoint Enabled       │   │
+│   │  • Configured with Account A access  │   │ Port   │   │  • Access Entry:                     │   │
+│   └──────────────────────────────────────┘   │  443   │   │    Allows Account B Principal        │   │
+│                                              │        │   └──────────────────────────────────────┘   │
+└──────────────────────────────────────────────┘        └──────────────────────────────────────────────┘
+```
+
+### Option A: Use Account A Credentials on Account B Jumper (Fastest)
+
+1. Launch your EC2 instance in **Account B** (in any default public subnet with auto-assign public IP enabled, and paste the User Data script from Step 1).
+2. SSH into the Jumper in Account B:
+   ```bash
+   ssh -i your-account-b-key.pem ubuntu@<ACCOUNT_B_JUMPER_PUBLIC_IP>
+   ```
+3. Run `aws configure` and supply the access keys of the `dcmusic-admin` user from **Account A**:
+   ```bash
+   aws configure
+   # AWS Access Key ID: [Access Key from Account A]
+   # AWS Secret Access Key: [Secret Key from Account A]
+   # Default region name: ap-south-1
+   # Default output format: json
+   ```
+4. Update kubeconfig targeting Account A's cluster:
+   ```bash
+   aws eks update-kubeconfig --name dcmusic-eks --region ap-south-1
+   ```
+5. Verify access:
+   ```bash
+   kubectl get nodes
+   ```
+
+---
+
+### Option B: Cross-Account IAM Role via EKS Access Entry (Enterprise Best Practice)
+
+If you do NOT want to store static access keys on the instance and prefer IAM Roles:
+
+1. **In Account B**:
+   - Create an IAM Role for the EC2 Jumper (e.g., `EKSJumperRole`).
+   - Attach this IAM role to your Jumper EC2 instance profile.
+   - Note down the Role ARN: `arn:aws:iam::<ACCOUNT_B_ID>:role/EKSJumperRole`.
+
+2. **In Account A (Where EKS lives)**:
+   - Go to **AWS Console** → **EKS** → Clusters → `dcmusic-eks` → **Access** tab.
+   - Under **IAM access entries**, click **Create access entry**.
+   - **IAM principal ARN**: Enter Account B's role ARN:
+     ```text
+     arn:aws:iam::<ACCOUNT_B_ID>:role/EKSJumperRole
+     ```
+   - Click **Next** → Click **Add access policy**:
+     - Policy: **`AmazonEKSClusterAdminPolicy`**
+     - Access scope: **Cluster**
+   - Click **Create**.
+
+3. **On the Jumper in Account B**:
+   - Update kubeconfig:
+     ```bash
+     aws eks update-kubeconfig --name dcmusic-eks --region ap-south-1
+     ```
+   - Run `kubectl get nodes` — the jumper authenticates through AWS STS cross-account token exchange seamlessly!
+
+---
+
 ## ⚠️ Important Teardown Note
 
 When you eventually tear down the infrastructure using `Jenkinsfile.infra.delete` or `terraform destroy`:
-- **You must terminate this manual Jumper EC2 instance FIRST!**
-- If an active EC2 instance is attached to the VPC public subnet, AWS will prevent Terraform from deleting the subnet and Internet Gateway (see [Issue 11 in troubleshoot.md](file:///home/dc/Desktop/Prod_DevOps/Documentation/troubleshoot.md)).
+- **If your Jumper is in Account A's VPC**: You must terminate it FIRST so the public subnet can be deleted (see [Issue 11 in troubleshoot.md](file:///home/dc/Desktop/Prod_DevOps/Documentation/troubleshoot.md)).
+- **If your Jumper is in Account B**: It does not block Account A's VPC teardown at all! You can keep it running without any conflict.
+
