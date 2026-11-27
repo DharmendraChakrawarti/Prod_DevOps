@@ -36,8 +36,13 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 #   - Security headers
 #   - SPA routing
 #   - Gzip compression
-#   - Dynamic backend proxy with auto-discovered DNS resolver
+#   - Robust upstream proxy for backend
 RUN cat > /etc/nginx/conf.d/default.conf.template << 'EOF'
+upstream backend_service {
+    server ${BACKEND_HOST}:${BACKEND_PORT} max_fails=3 fail_timeout=10s;
+    keepalive 32;
+}
+
 server {
     listen 80;
     server_name _;
@@ -62,9 +67,7 @@ server {
 
     # Reverse proxy /api requests to backend service
     location /api/ {
-        resolver ${DNS_RESOLVER} valid=10s ipv6=off;
-        set $backend_upstream "${BACKEND_HOST}:${BACKEND_PORT}";
-        proxy_pass http://$backend_upstream;
+        proxy_pass http://backend_service;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -73,6 +76,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
         proxy_read_timeout 60s;
     }
 
@@ -91,23 +95,19 @@ server {
 }
 EOF
 
-# Create startup script to inject container's exact nameserver from /etc/resolv.conf
+# Create startup script to inject container's exact nameserver and backend host
 RUN cat > /docker-entrypoint.sh << 'EOF'
 #!/bin/sh
 set -e
 
-# Extract the pod/container nameserver dynamically from /etc/resolv.conf
-NAMESERVER=$(awk '/^nameserver/ {print $2; exit}' /etc/resolv.conf 2>/dev/null || echo "10.100.0.10")
-export DNS_RESOLVER=${NAMESERVER:-"10.100.0.10"}
-
-# Default to dcmusic-backend:8080 (or override via BACKEND_HOST / BACKEND_PORT env vars)
+# Default to dcmusic-backend (or override via BACKEND_HOST / BACKEND_PORT env vars)
 export BACKEND_HOST=${BACKEND_HOST:-"dcmusic-backend"}
 export BACKEND_PORT=${BACKEND_PORT:-"8080"}
 
-echo "Starting Nginx with DNS_RESOLVER=${DNS_RESOLVER}, BACKEND=${BACKEND_HOST}:${BACKEND_PORT}"
+echo "Starting Nginx with BACKEND=${BACKEND_HOST}:${BACKEND_PORT}"
 
 # Substitute env variables into default.conf
-envsubst '${DNS_RESOLVER} ${BACKEND_HOST} ${BACKEND_PORT}' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${BACKEND_HOST} ${BACKEND_PORT}' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf
 
 exec nginx -g "daemon off;"
 EOF

@@ -8,5 +8,5 @@ metadata:
     app.kubernetes.io/component: frontend
 data:
   VITE_API_URL: {{ .Values.frontend.env.VITE_API_URL | quote }}
-  BACKEND_HOST: {{ include "dcmusic.fullname" . }}-backend
+  BACKEND_HOST: {{ include "dcmusic.fullname" . }}-backend.{{ .Values.namespace }}.svc.cluster.local
   BACKEND_PORT: {{ .Values.backend.service.port | quote }}
