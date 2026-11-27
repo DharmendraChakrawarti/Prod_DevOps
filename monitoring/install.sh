@@ -41,9 +41,8 @@ echo "📊 Importing Grafana app dashboard..."
 kubectl create configmap dcmusic-dashboard \
     --from-file=dcmusic-app.json="${SCRIPT_DIR}/grafana/app-dashboard.json" \
     -n monitoring \
-    --dry-run=client -o yaml | \
-    kubectl label --local -f - grafana_dashboard=1 -o yaml | \
-    kubectl apply -f -
+    --dry-run=client -o yaml | kubectl apply -f -
+kubectl label configmap dcmusic-dashboard -n monitoring grafana_dashboard="1" --overwrite
 
 # Step 6: Show access info
 GRAFANA_URL=$(kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending")
