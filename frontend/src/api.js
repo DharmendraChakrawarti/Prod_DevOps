@@ -1,7 +1,13 @@
 import axios from 'axios';
 
+// In production / containerized environments:
+// 1. If VITE_API_BASE_URL is passed at build time (e.g. backend LoadBalancer URL), use it.
+// 2. Otherwise default to current hostname on port 8080.
+const envApiUrl = import.meta.env.VITE_API_BASE_URL;
+const defaultApiUrl = `http://${window.location.hostname}:8080/api`;
+
 const api = axios.create({
-  baseURL: `http://${window.location.hostname}:8080/api`, // Backend URL
+  baseURL: envApiUrl || defaultApiUrl,
 });
 
 api.interceptors.request.use((config) => {

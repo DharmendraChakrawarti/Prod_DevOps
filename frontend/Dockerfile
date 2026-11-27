@@ -9,6 +9,10 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# Allow passing API URL during build time
+ARG VITE_API_BASE_URL=""
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
 # Copy dependency files first for better layer caching
 COPY package.json package-lock.json* ./
 RUN npm install

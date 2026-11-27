@@ -41,6 +41,11 @@ resource "aws_eks_cluster" "main" {
     endpoint_private_access = true
   }
 
+  access_config {
+    authentication_mode                         = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
+  }
+
   # CloudWatch logging (api, audit, authenticator = most useful for debugging)
   enabled_cluster_log_types = ["api", "audit", "authenticator"]
 
