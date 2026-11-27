@@ -205,15 +205,98 @@ Our [monitoring/prometheus/alerting-rules.yaml](file:///home/dc/Desktop/Prod_Dev
 
 ---
 
-### 3.4 Grafana Dashboard Provisioning
+### 3.4 Grafana Dashboard Provisioning & Metrics Deep-Dive
 
-The application dashboard in [monitoring/grafana/app-dashboard.json](file:///home/dc/Desktop/Prod_DevOps/monitoring/grafana/app-dashboard.json) is automatically mounted into Grafana without manual export/import steps.
+The custom pre-built dashboard in [monitoring/grafana/app-dashboard.json](file:///home/dc/Desktop/Prod_DevOps/monitoring/grafana/app-dashboard.json) is automatically imported into Grafana using the sidecar auto-discovery mechanism.
 
-**Monitored Panels:**
-- **JVM Heap Memory:** Real-time used vs committed vs max heap via Spring Boot Actuator metrics (`jvm_memory_used_bytes{area="heap"}`).
-- **HTTP Request Rate & Latency:** Total RPS and p95 response durations.
-- **Backend & Frontend Pod CPU/RAM:** Per-container resource consumption against limits.
-- **Pod Replicas & Restart Counts:** Active pod availability.
+#### How Dashboard Auto-Import Works:
+1. `monitoring/install.sh` creates a Kubernetes ConfigMap containing the JSON file and labels it:
+   ```bash
+   kubectl create configmap dcmusic-dashboard \
+       --from-file=dcmusic-app.json=monitoring/grafana/app-dashboard.json \
+       -n monitoring \
+       --dry-run=client -o yaml | \
+       kubectl label --local -f - grafana_dashboard=1 -o yaml | \
+       kubectl apply -f -
+   ```
+2. The `grafana-sc-dashboard` sidecar continuously watches for any ConfigMap labeled `grafana_dashboard=1`.
+3. When detected, the sidecar mounts the dashboard into `/tmp/dashboards` and triggers Grafana's hot-reload API:
+   `POST http://localhost:3000/api/admin/provisioning/dashboards/reload`.
+
+---
+
+#### Dashboard Panels Breakdown (10 Production Panels across 3 Sections)
+
+The **DC Music Application Dashboard** displays end-to-end metrics across 3 functional rows:
+
+```
+┌───────────────────────────────────────────────────────────────────────────────────────┐
+│                               DC MUSIC APPLICATION DASHBOARD                          │
+├───────────────────────────────────────────────────────────────────────────────────────┤
+│ 🌐 HTTP Metrics (Spring Boot WebMVC)                                                  │
+│ ┌───────────────────────────┐ ┌───────────────────────────┐ ┌───────────────────────┐ │
+│ │ HTTP Request Rate (RPS)   │ │ Response Time (P50/P95/P99│ │ Error Rate (5xx)      │ │
+│ │ rate(http_server_requests)│ │ histogram_quantile(...)   │ │ rate(status=~"5..")   │ │
+│ └───────────────────────────┘ └───────────────────────────┘ └───────────────────────┘ │
+├───────────────────────────────────────────────────────────────────────────────────────┤
+│ ☕ JVM Metrics (Backend Microservice)                                                 │
+│ ┌───────────────────────────────────────────────┐ ┌─────────────────────────────────┐ │
+│ │ JVM Heap Usage (Used vs Committed vs Max)     │ │ Active Threads (Live vs Peak)   │ │
+│ │ jvm_memory_used_bytes{area="heap"}            │ │ jvm_threads_live_threads        │ │
+│ └───────────────────────────────────────────────┘ └─────────────────────────────────┘ │
+├───────────────────────────────────────────────────────────────────────────────────────┤
+│ 🐳 Pod Resources (Kubernetes Container Workloads)                                     │
+│ ┌───────────────────────────────────────────────┐ ┌─────────────────────────────────┐ │
+│ │ Pod CPU Usage (vs Limit & Request)            │ │ Pod Memory Usage (vs Limit)     │ │
+│ │ rate(container_cpu_usage_seconds_total)       │ │ container_memory_working_set_byt│ │
+│ └───────────────────────────────────────────────┘ └─────────────────────────────────┘ │
+└───────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### Row 1: 🌐 HTTP Traffic & Latency Metrics
+- **HTTP Request Rate (RPS)**:
+  - **Query**: `sum(rate(http_server_requests_seconds_count{namespace="dcmusic"}[1m])) by (uri, status)`
+  - **Purpose**: Displays live requests per second broken down by endpoint (`/api/auth/login`, `/api/songs/stream`, etc.) and HTTP status code.
+- **Response Time (P50 / P95 / P99 Latency)**:
+  - **Query**: `histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{namespace="dcmusic"}[5m])) by (le))`
+  - **Purpose**: Measures 95th and 99th percentile response latencies to catch API degradation before users notice.
+- **Error Rate (5xx Server Errors)**:
+  - **Query**: `sum(rate(http_server_requests_seconds_count{namespace="dcmusic", status=~"5.."}[1m]))`
+  - **Purpose**: Instantly highlights server exceptions, database connection dropouts, or unhandled 500 errors.
+
+##### Row 2: ☕ JVM Performance & Runtime
+- **JVM Heap Usage**:
+  - **Query**: `jvm_memory_used_bytes{area="heap", namespace="dcmusic"}` vs `jvm_memory_max_bytes{area="heap"}`
+  - **Purpose**: Monitors memory allocation, helping detect garbage collection (GC) pressure and Java memory leaks.
+- **Active Threads**:
+  - **Query**: `jvm_threads_live_threads{namespace="dcmusic"}` and `jvm_threads_peak_threads`
+  - **Purpose**: Tracks thread pool saturation, Tomcat request executor queues, and deadlock conditions.
+
+##### Row 3: 🐳 Pod Resource Consumption (Kubernetes)
+- **Pod CPU Usage**:
+  - **Query**: `sum(rate(container_cpu_usage_seconds_total{namespace="dcmusic", container!=""}[5m])) by (pod)`
+  - **Purpose**: Visualizes individual pod CPU utilization against defined limits (triggers autoscaling / HPA).
+- **Pod Memory Usage**:
+  - **Query**: `sum(container_memory_working_set_bytes{namespace="dcmusic", container!=""}) by (pod)`
+  - **Purpose**: Tracks actual resident memory to prevent `OOMKilled` container crashes.
+
+---
+
+#### Recommended Community Dashboards to Import (One-Click)
+
+Besides the custom DC Music dashboard, you can also import these standard community Grafana dashboards by ID:
+
+| Dashboard Name | Grafana ID | Description |
+|---|---|---|
+| **Kubernetes Cluster Monitoring (Nodes & Pods)** | `15760` | Full EKS node CPU, RAM, disk I/O, network bandwidth, and pod distribution. |
+| **JVM Micrometer Overview** | `4701` | Detailed Java GC pause times, classloading, and memory pools. |
+| **Nginx Web Server Metrics** | `12708` | Ingress and frontend connection throughput, keepalives, and error codes. |
+
+##### How to Import Any Community Dashboard:
+1. In Grafana, click the **+ (Plus)** or **Dashboards** icon on the left navigation bar.
+2. Click **Import** (or **New** → **Import**).
+3. Under **Import via grafana.com**, enter the dashboard ID (e.g. `15760` or `4701`).
+4. Click **Load**, select datasource: **Prometheus**, and click **Import**.
 
 ---
 
