@@ -32,12 +32,12 @@ LABEL description="DC Music React Frontend served by Nginx"
 # Copy the built Vite dist into the Nginx web root
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Custom Nginx configuration with:
-#   - Security headers (X-Frame-Options, X-Content-Type-Options, X-XSS-Protection)
-#   - SPA routing (try_files fallback to index.html)
-#   - Gzip compression for performance
-#   - Cache headers for static assets
-RUN cat > /etc/nginx/conf.d/default.conf << 'EOF'
+# Custom Nginx configuration template with:
+#   - Security headers
+#   - SPA routing
+#   - Gzip compression
+#   - Dynamic backend proxy with auto-discovered DNS resolver
+RUN cat > /etc/nginx/conf.d/default.conf.template << 'EOF'
 server {
     listen 80;
     server_name _;
@@ -60,10 +60,10 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    # Reverse proxy /api requests to backend service (K8s / Docker internal DNS)
+    # Reverse proxy /api requests to backend service
     location /api/ {
-        resolver 172.20.0.10 127.0.0.11 valid=10s ipv6=off;
-        set $backend_upstream "dcmusic-backend:8080";
+        resolver ${DNS_RESOLVER} valid=10s ipv6=off;
+        set $backend_upstream "${BACKEND_HOST}:${BACKEND_PORT}";
         proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -91,6 +91,29 @@ server {
 }
 EOF
 
+# Create startup script to inject container's exact nameserver from /etc/resolv.conf
+RUN cat > /docker-entrypoint.sh << 'EOF'
+#!/bin/sh
+set -e
+
+# Extract the pod/container nameserver dynamically from /etc/resolv.conf
+NAMESERVER=$(awk '/^nameserver/ {print $2; exit}' /etc/resolv.conf 2>/dev/null || echo "10.100.0.10")
+export DNS_RESOLVER=${NAMESERVER:-"10.100.0.10"}
+
+# Default to dcmusic-backend:8080 (or override via BACKEND_HOST / BACKEND_PORT env vars)
+export BACKEND_HOST=${BACKEND_HOST:-"dcmusic-backend"}
+export BACKEND_PORT=${BACKEND_PORT:-"8080"}
+
+echo "Starting Nginx with DNS_RESOLVER=${DNS_RESOLVER}, BACKEND=${BACKEND_HOST}:${BACKEND_PORT}"
+
+# Substitute env variables into default.conf
+envsubst '${DNS_RESOLVER} ${BACKEND_HOST} ${BACKEND_PORT}' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf
+
+exec nginx -g "daemon off;"
+EOF
+
+RUN chmod +x /docker-entrypoint.sh
+
 # Ensure nginx user can write to required directories
 RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /etc/nginx/conf.d && \
     touch /var/run/nginx.pid && \
@@ -105,4 +128,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # Run as non-root nginx user
 USER nginx
 
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
