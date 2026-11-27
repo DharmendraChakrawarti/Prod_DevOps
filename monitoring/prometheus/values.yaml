@@ -15,14 +15,14 @@ grafana:
   service:
     type: LoadBalancer
 
-  # Resource limits suitable for free tier
+  # Resource limits tuned for modern Grafana (11.x / 13.x)
   resources:
     requests:
       cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 250m
       memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
 
   # Auto-discover dashboards from ConfigMaps with label grafana_dashboard=1
   sidecar:
