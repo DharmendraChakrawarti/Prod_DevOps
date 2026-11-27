@@ -190,17 +190,7 @@ pipeline {
                 }
 
                 dir('frontend') {
-                    // Check if backend service LoadBalancer exists to inject its URL into the build
-                    sh """
-                        BACKEND_URL=\$(kubectl get svc dcmusic-backend -n ${PROJECT_NAME} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
-                        if [ -n "\$BACKEND_URL" ]; then
-                            echo "🔗 Ingesting Backend LoadBalancer into frontend build: http://\${BACKEND_URL}:8080/api"
-                            docker build --build-arg VITE_API_BASE_URL="http://\${BACKEND_URL}:8080/api" -t ${env.ECR_FRONTEND}:${env.BUILD_NUMBER} -t ${env.ECR_FRONTEND}:latest .
-                        else
-                            echo "ℹ️ Backend LoadBalancer not found yet; building frontend with relative/host fallback"
-                            docker build -t ${env.ECR_FRONTEND}:${env.BUILD_NUMBER} -t ${env.ECR_FRONTEND}:latest .
-                        fi
-                    """
+                    sh "docker build -t ${env.ECR_FRONTEND}:${env.BUILD_NUMBER} -t ${env.ECR_FRONTEND}:latest ."
                 }
 
                 echo "✅ Docker images built with tags: ${env.BUILD_NUMBER}, latest"

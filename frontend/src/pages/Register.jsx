@@ -22,7 +22,7 @@ export default function Register() {
       dispatch(loginSuccess({ user: { email: data.email, role: data.role, name: data.name }, token: data.token }));
       navigate('/');
     } catch (err) {
-      const msg = err.response?.data;
+      const msg = err.response?.data?.message || err.response?.data || err.message;
       setError(typeof msg === 'string' ? msg : 'Registration failed');
     } finally {
       setLoading(false);

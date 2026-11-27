@@ -60,6 +60,22 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
+    # Reverse proxy /api requests to backend service (K8s / Docker internal DNS)
+    location /api/ {
+        resolver 172.20.0.10 127.0.0.11 valid=10s ipv6=off;
+        set $backend_upstream "dcmusic-backend:8080";
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
     # Cache static assets (JS, CSS, images) for 1 year
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
         expires 1y;

@@ -1,10 +1,12 @@
 import axios from 'axios';
 
-// In production / containerized environments:
-// 1. If VITE_API_BASE_URL is passed at build time (e.g. backend LoadBalancer URL), use it.
-// 2. Otherwise default to current hostname on port 8080.
+// In production & local:
+// 1. If VITE_API_BASE_URL is explicitly passed, use it.
+// 2. Otherwise default to relative '/api' which Nginx proxies internally to the backend!
+// 3. If running via Vite dev server directly (localhost:5173), fallback to localhost:8080/api.
 const envApiUrl = import.meta.env.VITE_API_BASE_URL;
-const defaultApiUrl = `http://${window.location.hostname}:8080/api`;
+const isViteDev = window.location.port === '5173';
+const defaultApiUrl = isViteDev ? 'http://localhost:8080/api' : '/api';
 
 const api = axios.create({
   baseURL: envApiUrl || defaultApiUrl,
