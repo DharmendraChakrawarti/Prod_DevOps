@@ -1,3 +1,4 @@
+{{- if and .Values.monitoring.enabled .Values.monitoring.serviceMonitor.enabled }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -12,6 +13,7 @@ spec:
       app.kubernetes.io/component: backend
   endpoints:
     - port: http
-      path: /actuator/prometheus
-      interval: 15s
+      path: {{ .Values.monitoring.serviceMonitor.path | default "/actuator/prometheus" }}
+      interval: {{ .Values.monitoring.serviceMonitor.interval | default "15s" }}
       scrapeTimeout: 10s
+{{- end }}

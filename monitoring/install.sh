@@ -44,7 +44,16 @@ kubectl create configmap dcmusic-dashboard \
     --dry-run=client -o yaml | kubectl apply -f -
 kubectl label configmap dcmusic-dashboard -n monitoring grafana_dashboard="1" --overwrite
 
-# Step 6: Show access info
+# Step 6: Deploy ServiceMonitor for DC Music backend
+echo "🔍 Deploying ServiceMonitor for DC Music backend..."
+helm upgrade --install dcmusic "${SCRIPT_DIR}/../helm/dcmusic" \
+    --namespace dcmusic \
+    --reuse-values \
+    --set monitoring.enabled=true \
+    --set monitoring.serviceMonitor.enabled=true 2>/dev/null || \
+kubectl apply -f "${SCRIPT_DIR}/../helm/dcmusic/templates/backend-servicemonitor.yaml"
+
+# Step 7: Show access info
 GRAFANA_URL=$(kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending")
 
 echo ""
