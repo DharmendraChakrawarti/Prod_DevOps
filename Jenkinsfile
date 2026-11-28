@@ -356,16 +356,17 @@ pipeline {
                         )
 
                         if (helmResult != 0) {
-                            echo '⚠️ Helm upgrade failed, falling back to kubectl set image...'
+                            echo '⚠️ Helm upgrade failed, falling back to kubectl set image with correct container names...'
                             sh """
                                 kubectl set image deployment/dcmusic-backend \\
-                                    dcmusic-backend=${env.ECR_BACKEND}:${env.BUILD_NUMBER} \\
+                                    backend=${env.ECR_BACKEND}:${env.BUILD_NUMBER} \\
                                     -n ${PROJECT_NAME} || true
 
                                 kubectl set image deployment/dcmusic-frontend \\
-                                    dcmusic-frontend=${env.ECR_FRONTEND}:${env.BUILD_NUMBER} \\
+                                    frontend=${env.ECR_FRONTEND}:${env.BUILD_NUMBER} \\
                                     -n ${PROJECT_NAME} || true
                             """
+                            error("❌ Helm upgrade failed! Please check the Helm error output above.")
                         }
                     }
 

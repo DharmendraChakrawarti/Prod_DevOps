@@ -69,6 +69,10 @@ spec:
       scrapeTimeout: 10s
 EOF
 
+# Ensure Grafana reloads the dashboard immediately
+echo "🔄 Reloading Grafana deployment to sync dashboard ConfigMap..."
+kubectl rollout restart deployment prometheus-grafana -n monitoring 2>/dev/null || true
+
 # Step 7: Show access info
 GRAFANA_URL=$(kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending")
 
