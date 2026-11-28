@@ -27,7 +27,7 @@ kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f 
 
 # Step 3: Install kube-prometheus-stack with custom values
 echo "📥 Installing kube-prometheus-stack..."
-helm install prometheus prometheus-community/kube-prometheus-stack \
+helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
     -n monitoring \
     -f "${SCRIPT_DIR}/prometheus/values.yaml" \
     --wait --timeout 600s
@@ -46,12 +46,28 @@ kubectl label configmap dcmusic-dashboard -n monitoring grafana_dashboard="1" --
 
 # Step 6: Deploy ServiceMonitor for DC Music backend
 echo "🔍 Deploying ServiceMonitor for DC Music backend..."
-helm upgrade --install dcmusic "${SCRIPT_DIR}/../helm/dcmusic" \
-    --namespace dcmusic \
-    --reuse-values \
-    --set monitoring.enabled=true \
-    --set monitoring.serviceMonitor.enabled=true 2>/dev/null || \
-kubectl apply -f "${SCRIPT_DIR}/../helm/dcmusic/templates/backend-servicemonitor.yaml"
+kubectl create namespace dcmusic --dry-run=client -o yaml | kubectl apply -f -
+cat <<EOF | kubectl apply -f -
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: dcmusic-backend-monitor
+  namespace: dcmusic
+  labels:
+    app.kubernetes.io/name: dcmusic
+    app.kubernetes.io/instance: dcmusic
+    app.kubernetes.io/component: backend
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: backend
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 15s
+      scrapeTimeout: 10s
+EOF
 
 # Step 7: Show access info
 GRAFANA_URL=$(kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending")

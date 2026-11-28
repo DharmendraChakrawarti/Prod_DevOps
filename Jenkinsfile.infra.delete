@@ -194,6 +194,14 @@ pipeline {
                      accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
                 ]) {
+                    // Release Kubernetes LoadBalancer services so their AWS ELB ENIs detach cleanly from VPC
+                    echo '🧹 Cleaning up Kubernetes LoadBalancers to release VPC subnets...'
+                    sh """
+                        aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_REGION} || true
+                        kubectl delete svc --all -n ${PROJECT_NAME} --timeout=60s || true
+                        kubectl delete svc --all -n monitoring --timeout=60s || true
+                    """
+
                     dir('terraform') {
                         echo '💥 Destroying infrastructure...'
                         sh 'terraform apply -auto-approve tfplan-destroy'

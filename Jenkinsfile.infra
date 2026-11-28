@@ -235,6 +235,26 @@ pipeline {
                 }
             }
         }
+
+        // =====================================================
+        // STAGE 9: DEPLOY MONITORING STACK
+        // =====================================================
+        // Automatically deploys Prometheus, Grafana, alerting rules,
+        // application dashboard, and backend ServiceMonitor to EKS.
+        // =====================================================
+        stage('Deploy Monitoring Stack') {
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+                                  credentialsId: 'aws-credentials',
+                                  accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                  secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+
+                    echo '📊 Deploying Prometheus & Grafana Monitoring Stack to EKS...'
+                    sh "aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_REGION}"
+                    sh "chmod +x monitoring/install.sh && bash monitoring/install.sh"
+                }
+            }
+        }
     }
 
     // ---------------------------------------------------------
