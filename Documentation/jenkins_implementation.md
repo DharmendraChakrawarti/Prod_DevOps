@@ -794,40 +794,22 @@ Click **"Save"**
 ║  Command: aws eks update-kubeconfig --name dcmusic-eks ...      ║
 ║  Verifies cluster endpoint and prints local setup instructions.  ║
 ╚══════════════════════════════════════════════════════════════════╝
-║  > module.eks.aws_eks_cluster.main: Still creating... [10m]     ║
-║  > module.eks.aws_eks_cluster.main: Creation complete [12m]     ║ ← SLOWEST
-║  > ...                                                          ║
-║  > module.eks.aws_eks_node_group.main: Creating...              ║
-║  > module.eks.aws_eks_node_group.main: Still creating... [3m]   ║
-║  > module.eks.aws_eks_node_group.main: Creation complete [5m]   ║
-║  > ...                                                          ║
-║  > module.rds.aws_db_instance.main: Creating...                 ║
-║  > module.rds.aws_db_instance.main: Creation complete [5m]      ║
-║  > ...                                                          ║
-║  > Apply complete! Resources: 30 added, 0 changed, 0 destroyed ║
-║                                                                  ║
-║  ⚠️ BE PATIENT! Don't cancel the build!                         ║
-║     EKS cluster: ~12 min | Node group: ~5 min | RDS: ~5 min   ║
-╚══════════════════════════════════════════════════════════════════╝
                               ↓
 ╔══════════════════════════════════════════════════════════════════╗
-║  STAGE 6: UPDATE KUBECONFIG                           ⏱️ ~10s  ║
+║  STAGE 9: DEPLOY MONITORING STACK                    ⏱️ ~3-5m   ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║                                                                  ║
-║  🔧 Configures kubectl on Jenkins to connect to the new EKS.   ║
+║  📊 Automatically provisions full observability suite to EKS:    ║
+║     - Installs Prometheus, Grafana, and Alertmanager (Helm)      ║
+║     - Deploys custom alerting rules (alerting-rules.yaml)        ║
+║     - Deploys permanent ConfigMap: dcmusic-dashboard             ║
+║     - Deploys backend ServiceMonitor (dcmusic-backend-monitor)   ║
+║     - Automatically reloads Grafana to sync dashboard ConfigMap  ║
 ║                                                                  ║
-║  Command run:                                                   ║
-║  aws eks update-kubeconfig --name dcmusic-eks --region ap-south-1║
+║  Command: bash monitoring/install.sh                             ║
+║  Output: Grafana LoadBalancer URL & Admin credentials            ║
 ║                                                                  ║
-║  Console Output:                                                ║
-║  > Added new context arn:aws:eks:ap-south-1:XXXX:cluster/dcmusic-eks║
-║  >                                                              ║
-║  > ✅ INFRASTRUCTURE READY!                                     ║
-║  > To configure kubectl on your local machine:                  ║
-║  > aws eks update-kubeconfig --name dcmusic-eks --region ap-south-1║
-║  > Then verify with: kubectl get nodes                          ║
-║                                                                  ║
-║  🎉 PIPELINE COMPLETE!                                          ║
+║  🎉 INFRASTRUCTURE & MONITORING READY!                           ║
 ╚══════════════════════════════════════════════════════════════════╝
 ```
 
