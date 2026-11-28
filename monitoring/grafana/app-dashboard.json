@@ -69,7 +69,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -86,7 +86,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "sum(rate(http_server_requests_seconds_count{namespace=\"dcmusic\"}[1m])) by (method, uri)",
           "legendFormat": "{{method}} {{uri}}",
           "refId": "A"
@@ -96,7 +96,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -113,19 +113,19 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{namespace=\"dcmusic\"}[1m])) by (le))",
           "legendFormat": "P50",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{namespace=\"dcmusic\"}[1m])) by (le))",
           "legendFormat": "P95",
           "refId": "B"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{namespace=\"dcmusic\"}[1m])) by (le))",
           "legendFormat": "P99",
           "refId": "C"
@@ -135,7 +135,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -160,7 +160,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "sum(rate(http_server_requests_seconds_count{namespace=\"dcmusic\",status=~\"5..\"}[1m])) / sum(rate(http_server_requests_seconds_count{namespace=\"dcmusic\"}[1m]))",
           "legendFormat": "5xx Error Rate",
           "refId": "A"
@@ -177,7 +177,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -194,19 +194,19 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "jvm_memory_used_bytes{namespace=\"dcmusic\",area=\"heap\"}",
           "legendFormat": "Heap Used",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "jvm_memory_max_bytes{namespace=\"dcmusic\",area=\"heap\"}",
           "legendFormat": "Heap Max",
           "refId": "B"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "jvm_memory_committed_bytes{namespace=\"dcmusic\",area=\"heap\"}",
           "legendFormat": "Heap Committed",
           "refId": "C"
@@ -216,7 +216,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -233,19 +233,19 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "jvm_threads_live_threads{namespace=\"dcmusic\"}",
           "legendFormat": "Live Threads",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "jvm_threads_daemon_threads{namespace=\"dcmusic\"}",
           "legendFormat": "Daemon Threads",
           "refId": "B"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "jvm_threads_peak_threads{namespace=\"dcmusic\"}",
           "legendFormat": "Peak Threads",
           "refId": "C"
@@ -262,7 +262,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -279,7 +279,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"dcmusic\",container!=\"\"}[1m])) by (pod) / sum(kube_pod_container_resource_limits{namespace=\"dcmusic\",resource=\"cpu\"}) by (pod)",
           "legendFormat": "{{pod}} CPU %",
           "refId": "A"
@@ -289,7 +289,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -306,7 +306,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "sum(container_memory_working_set_bytes{namespace=\"dcmusic\",container!=\"\"}) by (pod) / sum(kube_pod_container_resource_limits{namespace=\"dcmusic\",resource=\"memory\"}) by (pod)",
           "legendFormat": "{{pod}} Memory %",
           "refId": "A"
@@ -323,7 +323,7 @@
     "list": [
       {
         "current": {},
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
         "definition": "label_values(kube_pod_info{namespace=\"dcmusic\"}, pod)",
         "hide": 0,
         "includeAll": true,
