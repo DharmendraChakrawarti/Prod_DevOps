@@ -15,5 +15,6 @@ This directory centralizes all implementation guides, architecture flows, and ru
 | [project_implementation.md](file:///home/dc/Desktop/Prod_DevOps/Documentation/project_implementation.md) | Detailed technical implementation guide for Docker, Helm, Kubernetes, and CI/CD pipelines. |
 | [jenkins_implementation.md](file:///home/dc/Desktop/Prod_DevOps/Documentation/jenkins_implementation.md) | Complete Jenkins pipeline architecture, credentials, plugins, and execution stages. |
 | [jumper-for-eks.md](file:///home/dc/Desktop/Prod_DevOps/Documentation/jumper-for-eks.md) | Step-by-step creation and connection guide for the EC2 Jumper/Bastion host for EKS. |
+| [cleanup.md](file:///home/dc/Desktop/Prod_DevOps/Documentation/cleanup.md) | Mandatory pre-teardown checklist, VPC hang root cause analysis, and emergency unstick runbook. |
 | [troubleshoot.md](file:///home/dc/Desktop/Prod_DevOps/Documentation/troubleshoot.md) | Comprehensive troubleshooting log of all 15+ issues, errors, root causes, and fixes. |
 | [manual_guide.md](file:///home/dc/Desktop/Prod_DevOps/Documentation/manual_guide.md) | Manual deployment, access, and troubleshooting instructions. |
