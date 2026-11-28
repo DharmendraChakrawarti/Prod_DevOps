@@ -308,7 +308,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "jvm_memory_used_bytes{namespace=\"dcmusic\",area=\"heap\"}",
+          "expr": "sum(jvm_memory_used_bytes{namespace=\"dcmusic\",area=\"heap\"})",
           "legendFormat": "Heap Used",
           "refId": "A"
         },
@@ -317,7 +317,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "jvm_memory_max_bytes{namespace=\"dcmusic\",area=\"heap\"}",
+          "expr": "sum(jvm_memory_max_bytes{namespace=\"dcmusic\",area=\"heap\"})",
           "legendFormat": "Heap Max",
           "refId": "B"
         },
@@ -326,7 +326,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "jvm_memory_committed_bytes{namespace=\"dcmusic\",area=\"heap\"}",
+          "expr": "sum(jvm_memory_committed_bytes{namespace=\"dcmusic\",area=\"heap\"})",
           "legendFormat": "Heap Committed",
           "refId": "C"
         }
@@ -376,7 +376,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "jvm_threads_live_threads{namespace=\"dcmusic\"}",
+          "expr": "sum(jvm_threads_live_threads{namespace=\"dcmusic\"})",
           "legendFormat": "Live Threads",
           "refId": "A"
         },
@@ -385,7 +385,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "jvm_threads_daemon_threads{namespace=\"dcmusic\"}",
+          "expr": "sum(jvm_threads_daemon_threads{namespace=\"dcmusic\"})",
           "legendFormat": "Daemon Threads",
           "refId": "B"
         },
@@ -394,7 +394,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "jvm_threads_peak_threads{namespace=\"dcmusic\"}",
+          "expr": "max(jvm_threads_peak_threads{namespace=\"dcmusic\"})",
           "legendFormat": "Peak Threads",
           "refId": "C"
         }
@@ -428,7 +428,7 @@
             "lineWidth": 2,
             "fillOpacity": 10
           },
-          "unit": "percentunit"
+          "unit": "short"
         },
         "overrides": []
       },
@@ -456,8 +456,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"dcmusic\",container!=\"\"}[1m])) by (pod) / sum(kube_pod_container_resource_limits{namespace=\"dcmusic\",resource=\"cpu\"}) by (pod)",
-          "legendFormat": "{{pod}} CPU %",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"dcmusic\",container!=\"\"}[1m])) by (pod)",
+          "legendFormat": "{{pod}} CPU (cores)",
           "refId": "A"
         }
       ],
@@ -478,7 +478,7 @@
             "lineWidth": 2,
             "fillOpacity": 10
           },
-          "unit": "percentunit"
+          "unit": "bytes"
         },
         "overrides": []
       },
@@ -506,8 +506,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(container_memory_working_set_bytes{namespace=\"dcmusic\",container!=\"\"}) by (pod) / sum(kube_pod_container_resource_limits{namespace=\"dcmusic\",resource=\"memory\"}) by (pod)",
-          "legendFormat": "{{pod}} Memory %",
+          "expr": "sum(container_memory_working_set_bytes{namespace=\"dcmusic\",container!=\"\"}) by (pod)",
+          "legendFormat": "{{pod}} Memory",
           "refId": "A"
         }
       ],
