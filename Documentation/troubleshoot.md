@@ -21,6 +21,9 @@ This document catalogs every technical problem, root cause, error message, and r
 13. [Issue 13: `net::ERR_CONNECTION_TIMED_OUT` on User Registration](#issue-13-neterr_connection_timed_out-on-user-registration)
 14. [Issue 14: `502 Bad Gateway` from Frontend Nginx Reverse Proxy](#issue-14-502-bad-gateway-from-frontend-nginx-reverse-proxy)
 15. [Issue 15: Trivy Security Scan Flagging Base Image CVEs (Build UNSTABLE)](#issue-15-trivy-security-scan-flagging-base-image-cves-build-unstable)
+16. [Issue 16: Grafana Pod OOMKilled (Exit Code 137)](#issue-16-grafana-pod-oomkilled-exit-code-137)
+17. [Issue 17: Grafana Dashboard "No Data" (Unresolved Datasource UID)](#issue-17-grafana-dashboard-no-data-unresolved-datasource-uid)
+18. [Issue 18: Helm Upgrade Fails on Fresh Cluster (`no matches for kind "ServiceMonitor"`)](#issue-18-helm-upgrade-fails-on-fresh-cluster-no-matches-for-kind-servicemonitor)
 
 ---
 
@@ -290,3 +293,62 @@ This document catalogs every technical problem, root cause, error message, and r
   Upstream Maven and Eclipse-Temurin base images had newly discovered CVEs.
 - **Resolution**:
   Used soft-fail handling (`unstable(...)` instead of `error(...)`) in `Jenkinsfile` Stage 6. This flags security concerns in the Jenkins dashboard without completely halting production delivery during base image patch cycles.
+
+---
+
+### Issue 16: Grafana Pod OOMKilled (Exit Code 137)
+
+- **Symptoms / Error Message**:
+  ```text
+  prometheus-grafana-xxx   2/3     CrashLoopBackOff / OOMKilled   (Exit Code: 137)
+  ```
+- **Root Cause**:
+  Modern Grafana 10.x / 11.x requires more than 256Mi memory during dashboard initialization, plugin loading, and query rendering. The default 256Mi memory limit in `monitoring/prometheus/values.yaml` caused the Linux kernel OOM-killer to terminate the container.
+- **Resolution**:
+  Increased Grafana memory requests to `256Mi` and memory limits to `768Mi` in `monitoring/prometheus/values.yaml`:
+  ```yaml
+  grafana:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 768Mi
+  ```
+
+---
+
+### Issue 17: Grafana Dashboard "No Data" (Unresolved Datasource UID)
+
+- **Symptoms / Error Message**:
+  All panels on the DC Music Application Dashboard showed `No data`, but clicking "Edit" on a panel displayed the graph.
+- **Root Cause**:
+  The dashboard JSON exported from Grafana contained an empty datasource UID (`"uid": ""`) and an unresolvable `__inputs` block. When viewing the main dashboard, Grafana could not route queries to Prometheus. In edit mode, Grafana auto-detected the default datasource.
+- **Resolution**:
+  1. Updated `monitoring/grafana/app-dashboard.json` to explicitly bind all panels, targets, and templating variables to `{"type": "prometheus", "uid": "prometheus"}`.
+  2. Removed blocking `__inputs` array.
+  3. Re-applied ConfigMap `dcmusic-dashboard` in `monitoring` namespace.
+
+---
+
+### Issue 18: Helm Upgrade Fails on Fresh Cluster (`no matches for kind "ServiceMonitor"`)
+
+- **Symptoms / Error Message**:
+  ```text
+  Error: unable to build kubernetes objects from release manifest: resource mapping not found for name: "dcmusic-backend-monitor" namespace: "dcmusic" from "": no matches for kind "ServiceMonitor" in version "monitoring.coreos.com/v1"
+  ensure CRDs are installed first
+  ```
+- **Root Cause**:
+  On a newly created EKS cluster where the monitoring stack (`kube-prometheus-stack`) has not yet been deployed, the `ServiceMonitor` CustomResourceDefinition (CRD) is not registered in the Kubernetes API. Because `monitoring.serviceMonitor.enabled` was set to `true`, Helm tried to deploy `backend-servicemonitor.yaml` and failed before creating any application resources.
+- **Resolution**:
+  1. Added API version discovery check `(.Capabilities.APIVersions.Has "monitoring.coreos.com/v1")` to `helm/dcmusic/templates/backend-servicemonitor.yaml`:
+     ```yaml
+     {{- if and .Values.monitoring.enabled .Values.monitoring.serviceMonitor.enabled (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") }}
+     apiVersion: monitoring.coreos.com/v1
+     kind: ServiceMonitor
+     ...
+     {{- end }}
+     ```
+     This allows Helm to safely skip the `ServiceMonitor` if Prometheus Operator is not installed, while automatically rendering it once Prometheus CRDs exist.
+  2. Wrapped post-action failure diagnostics in `Jenkinsfile` with `withCredentials` AWS credentials so `kubectl` diagnostic commands succeed without authentication errors.
