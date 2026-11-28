@@ -421,11 +421,16 @@ pipeline {
         }
         failure {
             echo '❌ Pipeline failed! Fetching Kubernetes pod diagnostics...'
-            sh """
-                kubectl get pods -n ${PROJECT_NAME} -o wide || true
-                kubectl describe pods -n ${PROJECT_NAME} || true
-                kubectl logs -n ${PROJECT_NAME} -l app.kubernetes.io/component=backend --tail=50 || true
-            """
+            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+                              credentialsId: 'aws-credentials',
+                              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                sh """
+                    kubectl get pods -n ${PROJECT_NAME} -o wide || true
+                    kubectl describe pods -n ${PROJECT_NAME} || true
+                    kubectl logs -n ${PROJECT_NAME} -l app.kubernetes.io/component=backend --tail=50 || true
+                """
+            }
         }
         always {
             // Clean up Docker images from Jenkins server to save disk space
